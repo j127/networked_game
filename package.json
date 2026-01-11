@@ -1,10 +1,15 @@
 {
   "name": "king_of_the_tabletop_game",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
-  "scripts": {},
-  "dependencies": {},
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "format": "prettier --write '**/*.{md,mdx,ts,js,mjs,cjs,jsx,tsx,yaml,yml,json,html,css,scss,vue,astro}'"
+  },
+  "dependencies": {
+    "hono": "^4.11.3"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "prettier": "^3.7.4",
