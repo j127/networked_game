@@ -7,7 +7,7 @@
 - **Runtime:** Bun
 - **Framework:** Hono
 - **Database:** SQLite (using `bun:sqlite` or `better-sqlite3`)
-- **Communication:** WebSockets
+- **Communication:** WebSockets (for multiplayer)
 - **Language:** TypeScript
 
 ## 2. Database Schema (SQLite)
@@ -177,11 +177,3 @@ export const EVENTS_TABLE = [
 4. **Game Loop - Passive:** Implement Income and Card Draw (easiest phases).
 5. **Game Loop - Board:** Implement placing things on territories.
 6. **Game Loop - Combat:** Implement the dice rolling and hit assignment logic.
-
-```
-### Next Steps for You
-
-I can now generate the initial **Server Code** (`server.ts`) containing the Hono/WebSocket boilerplate and the **Database Setup** (`db.ts`) which includes the SQLite schema and the code to seed the initial game deck based on the PDF counts.
-
-Would you like me to start with those two files?
-```
