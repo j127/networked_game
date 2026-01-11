@@ -1,0 +1,14 @@
+{
+  "name": "king_of_the_tabletop_game",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {},
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
