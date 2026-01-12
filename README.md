@@ -10,6 +10,18 @@ bun run frontend
 
 Please see the [specs](./specs/) directory for the technical specifications.
 
+## Database Configuration
+
+The project uses `@libsql/client` everywhere (local and production).
+
+```bash
+# Local file (default is file:game.sqlite)
+KOTT_DB_PATH=game.sqlite
+
+# Turso / libSQL URL for production
+KOTT_DB_URL=libsql://<db-name>.turso.io?authToken=...
+```
+
 ## Project Status Report (2026-01-12)
 
 ### Features Implemented
@@ -17,7 +29,7 @@ Please see the [specs](./specs/) directory for the technical specifications.
 **Backend Infrastructure**
 
 - **Server:** Set up using **Hono** running on **Bun**.
-- **Database:** **SQLite** with **Drizzle ORM** for type-safe queries and schema management.
+- **Database:** **libSQL** (via `@libsql/client`) with **Drizzle ORM** for type-safe queries and schema management; works locally and with Turso.
 - **Real-time Communication:** WebSocket server implementation for broadcasting `GAME_STATE` updates to connected clients.
 - **Game State Management:** Centralized logic for initializing games (`src/game/setup.ts`), managing phases (`src/game/logic.ts`), and handling player actions.
 
@@ -60,6 +72,7 @@ Please see the [specs](./specs/) directory for the technical specifications.
 - [ ] **Verify Unit Placement Loop:** Manually confirm purchase/free draw and deploy work end-to-end without server crashes.
 - [ ] **Fix Cyclic Data Issues:** Ensure the sanitized `getPlayersInGame` query is fully robust and covers all needed nested data (Traits, Abilities) without causing cycles.
 - [x] **Unit Tests:** Added vitest coverage for income and tile purchase basics.
+- [x] **Database Driver Unification:** Moved all environments to `@libsql/client` (Turso-compatible).
 - [ ] **Integration Tests:** Create a stable script (e.g., `scripts/test_game_flow.ts`) that simulates a full turn (Join -> Draw Land -> Purchase -> Deploy) to catch regressions.
 
 ### 2. Combat Engine (Core Feature)

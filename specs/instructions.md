@@ -6,7 +6,7 @@
 
 - **Runtime:** Bun
 - **Framework:** Hono
-- **Database:** SQLite (using `bun:sqlite` or `better-sqlite3`)
+- **Database:** libSQL (via `@libsql/client` for local + Turso production)
 - **Communication:** WebSockets (for multiplayer)
 - **Language:** TypeScript
 
@@ -185,7 +185,7 @@ export const EVENTS_TABLE = [
 
 ## 6. Implementation Steps
 
-1. **Setup:** Initialize Bun project, install `hono`, `bun:sqlite`.
+1. **Setup:** Initialize Bun project, install `hono`, `@libsql/client`.
 2. **DB Init:** Write a script to create tables and seed the "Deck" (insert all 124 playing deck tiles into `things` with location='DECK').
 3. **WebSocket Server:** Create the Hono upgrade handler.
 4. **Game Loop - Passive:** Implement Income and Card Draw (easiest phases).
