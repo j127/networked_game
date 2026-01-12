@@ -71,7 +71,13 @@ app.post("/api/games/:gameId/attack", async (c) => {
   const body = await c.req.json();
   const { playerId, fromTerritoryId, toTerritoryId, unitIds } = body;
   try {
-    const combatState = declareAttack(gameId, playerId, fromTerritoryId, toTerritoryId, unitIds);
+    const combatState = declareAttack(
+      gameId,
+      playerId,
+      fromTerritoryId,
+      toTerritoryId,
+      unitIds
+    );
     await broadcastGameState(gameId);
     return c.json({ success: true, combatState });
   } catch (e: any) {
@@ -174,7 +180,9 @@ app.get(
     return {
       async onOpen(event, ws) {
         try {
-          console.log(`Connection opened for game ${gameId}, player ${playerId}`);
+          console.log(
+            `Connection opened for game ${gameId}, player ${playerId}`
+          );
 
           // Add to connections
           if (!connections.has(gameId)) {

@@ -13,13 +13,20 @@
       class="sticky top-0 z-10 flex items-center justify-between bg-white p-4 shadow"
     >
       <h1 class="text-xl font-bold text-indigo-600">King of the Tabletop</h1>
-      <div id="status-bar" class="flex flex-col items-end md:items-center md:flex-row space-x-4 text-sm font-medium">
+      <div
+        id="status-bar"
+        class="flex flex-col items-end space-x-4 text-sm font-medium md:flex-row md:items-center"
+      >
         <span
           id="phase-display"
           class="rounded-full bg-indigo-100 px-3 py-1 text-indigo-800"
           >Phase: Setup</span
         >
-        <span id="phase-instruction" class="text-xs text-gray-500 italic hidden md:inline-block">Waiting to start...</span>
+        <span
+          id="phase-instruction"
+          class="hidden text-xs text-gray-500 italic md:inline-block"
+          >Waiting to start...</span
+        >
         <span
           id="gold-display"
           class="rounded-full bg-yellow-100 px-3 py-1 text-yellow-800"

@@ -29,14 +29,14 @@ async function init() {
   const urlGameId = urlParams.get("gameId");
 
   if (urlGameId && urlGameId !== gameId) {
-     // User clicked a shared link, switch to that game
-     console.log("Switching to shared game:", urlGameId);
-     localStorage.setItem("gameId", urlGameId);
-     localStorage.removeItem("playerId"); // Force re-join as new player
-     gameId = urlGameId;
-     playerId = null;
-     location.reload();
-     return;
+    // User clicked a shared link, switch to that game
+    console.log("Switching to shared game:", urlGameId);
+    localStorage.setItem("gameId", urlGameId);
+    localStorage.removeItem("playerId"); // Force re-join as new player
+    gameId = urlGameId;
+    playerId = null;
+    location.reload();
+    return;
   }
 
   if (gameId && playerId) {
@@ -44,9 +44,9 @@ async function init() {
     connectWebSocket();
     // Update URL if missing
     if (!urlGameId) {
-        const url = new URL(window.location.href);
-        url.searchParams.set("gameId", gameId);
-        window.history.replaceState({}, "", url);
+      const url = new URL(window.location.href);
+      url.searchParams.set("gameId", gameId);
+      window.history.replaceState({}, "", url);
     }
   } else {
     // Show join modal (default)
@@ -63,15 +63,14 @@ btnJoin?.addEventListener("click", async () => {
   // 1. Create Game (if needed)
   try {
     let gid = gameId;
-    
+
     // Check if we have a URL game ID to join first
     const urlParams = new URLSearchParams(window.location.search);
     const urlGameId = urlParams.get("gameId");
-    
+
     if (urlGameId) {
-        gid = urlGameId;
-    } 
-    else if (!gid) {
+      gid = urlGameId;
+    } else if (!gid) {
       // Create NEW game
       const res = await fetch("/api/games", { method: "POST" });
       const data = await res.json();
@@ -99,20 +98,20 @@ btnJoin?.addEventListener("click", async () => {
     await fetch(`/api/games/${gid}/start`, { method: "POST" });
 
     joinModal?.classList.add("hidden");
-    
+
     // Update URL
     const url = new URL(window.location.href);
     url.searchParams.set("gameId", gid!);
     window.history.pushState({}, "", url);
-    
+
     connectWebSocket();
   } catch (e: any) {
     if (e.message.includes("already started")) {
-        // Ignore specific start error for 2nd player
-        joinModal?.classList.add("hidden");
-        connectWebSocket();
+      // Ignore specific start error for 2nd player
+      joinModal?.classList.add("hidden");
+      connectWebSocket();
     } else {
-        alert("Error joining: " + e.message);
+      alert("Error joining: " + e.message);
     }
   }
 });
@@ -144,7 +143,10 @@ function connectWebSocket() {
   ws.onclose = () => {
     console.log("Disconnected");
     updateStatus("Disconnected (Server Offline?)");
-    showFeedback("Connection lost. Is the server running?", "text-red-600 font-bold");
+    showFeedback(
+      "Connection lost. Is the server running?",
+      "text-red-600 font-bold"
+    );
   };
 
   ws.onerror = (err) => {
@@ -220,7 +222,10 @@ btnNextPhase?.addEventListener("click", async () => {
 
 function updateUI(state: any) {
   // Check for invalid session (Game deleted or Player deleted)
-  if (!state.game || (state.players && !state.players.find((p: any) => p.id === playerId))) {
+  if (
+    !state.game ||
+    (state.players && !state.players.find((p: any) => p.id === playerId))
+  ) {
     console.warn("Invalid session detected. Resetting...");
     localStorage.removeItem("gameId");
     localStorage.removeItem("playerId");
@@ -231,50 +236,58 @@ function updateUI(state: any) {
   if (state.game) {
     const phase = state.game.current_phase;
     if (phaseDisplay) phaseDisplay.textContent = `Phase: ${phase}`;
-    
+
     // Update Instructions & Button State
     const instructionEl = document.getElementById("phase-instruction");
     if (instructionEl) {
-        let text = "";
-        switch(phase) {
-            case "INCOME": text = "Collect Gold & Upgrade Territories."; break;
-            case "EVENTS": text = "Random events occur. Click Next Phase."; break;
-            case "ACQUIRE": text = "Draw Lands & Buy Units (5g)."; break;
-            case "WAR": text = "Select your territory -> Click enemy to Attack."; break;
-        }
-        instructionEl.textContent = text;
+      let text = "";
+      switch (phase) {
+        case "INCOME":
+          text = "Collect Gold & Upgrade Territories.";
+          break;
+        case "EVENTS":
+          text = "Random events occur. Click Next Phase.";
+          break;
+        case "ACQUIRE":
+          text = "Draw Lands & Buy Units (5g).";
+          break;
+        case "WAR":
+          text = "Select your territory -> Click enemy to Attack.";
+          break;
+      }
+      instructionEl.textContent = text;
     }
 
     const isAcquire = phase === "ACQUIRE";
     if (btnDrawLand) {
-        (btnDrawLand as HTMLButtonElement).disabled = !isAcquire;
-        btnDrawLand.className = isAcquire 
-            ? "rounded bg-green-500 px-4 py-2 font-bold text-white transition hover:bg-green-600 shadow" 
-            : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
+      (btnDrawLand as HTMLButtonElement).disabled = !isAcquire;
+      btnDrawLand.className = isAcquire
+        ? "rounded bg-green-500 px-4 py-2 font-bold text-white transition hover:bg-green-600 shadow"
+        : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
     }
     if (btnDrawUnit) {
-        (btnDrawUnit as HTMLButtonElement).disabled = !isAcquire;
-        btnDrawUnit.className = isAcquire 
-            ? "rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 shadow"
-            : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
+      (btnDrawUnit as HTMLButtonElement).disabled = !isAcquire;
+      btnDrawUnit.className = isAcquire
+        ? "rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 shadow"
+        : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
     }
 
     // Show Game ID in title or header (append if not there)
     const title = document.querySelector("header h1");
-    if (title && !title.textContent?.includes(state.game.id.slice(0,4))) {
-        title.innerHTML = `King of the Tabletop <span class="text-xs font-normal text-gray-500 ml-2">Game: ${state.game.id.slice(0, 6)}...</span>`;
+    if (title && !title.textContent?.includes(state.game.id.slice(0, 4))) {
+      title.innerHTML = `King of the Tabletop <span class="text-xs font-normal text-gray-500 ml-2">Game: ${state.game.id.slice(0, 6)}...</span>`;
     }
 
     if (state.game.combat_state) {
-       const cs = JSON.parse(state.game.combat_state);
-       renderCombatModal(cs);
+      const cs = JSON.parse(state.game.combat_state);
+      renderCombatModal(cs);
     } else {
-       document.getElementById("combat-modal")?.remove();
+      document.getElementById("combat-modal")?.remove();
     }
   }
 
   if (!state.players) return;
-  
+
   // Render ME
   const me = state.players.find((p: any) => p.id === playerId);
   if (me) {
@@ -306,11 +319,12 @@ function renderHand(units: any[]) {
     // "Chit" style: Square-ish, thick border, shadow
     const isSelected = selectedUnitId === unit.id;
     div.className = `w-24 h-24 shrink-0 rounded-md border-4 p-2 flex flex-col items-center justify-center cursor-pointer transition select-none shadow-md
-        ${isSelected 
-            ? "border-blue-500 bg-blue-100 scale-105 ring-2 ring-blue-300" 
+        ${
+          isSelected
+            ? "border-blue-500 bg-blue-100 scale-105 ring-2 ring-blue-300"
             : "border-gray-400 bg-amber-50 hover:border-gray-600 hover:bg-amber-100"
         }`;
-    
+
     div.innerHTML = `
         <div class="font-bold text-xs text-center leading-tight uppercase tracking-wider text-gray-800">${unit.template_id.replace(/_/g, " ")}</div>
         <div class="mt-1 text-[10px] font-mono text-gray-600">⚔️ ?</div>
@@ -331,50 +345,54 @@ function renderHand(units: any[]) {
 let sourceTerritoryId: string | null = null;
 
 function renderWorld(players: any[]) {
-    const container = document.getElementById("kingdom-board");
-    if (!container) return;
-    container.innerHTML = "";
-    
-    // Flatten territories
-    const allTerritories: any[] = [];
-    players.forEach(p => {
-        if(p.territories) {
-            p.territories.forEach((t: any) => {
-                t._ownerName = p.name;
-                t._ownerId = p.id;
-                allTerritories.push(t);
-            });
-        }
-    });
+  const container = document.getElementById("kingdom-board");
+  if (!container) return;
+  container.innerHTML = "";
 
-    if (allTerritories.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center text-gray-400">No territories claimed yet.</div>`;
-        return;
+  // Flatten territories
+  const allTerritories: any[] = [];
+  players.forEach((p) => {
+    if (p.territories) {
+      p.territories.forEach((t: any) => {
+        t._ownerName = p.name;
+        t._ownerId = p.id;
+        allTerritories.push(t);
+      });
+    }
+  });
+
+  if (allTerritories.length === 0) {
+    container.innerHTML = `<div class="col-span-full text-center text-gray-400">No territories claimed yet.</div>`;
+    return;
+  }
+
+  allTerritories.forEach((terr) => {
+    const isMine = terr._ownerId === playerId;
+    const div = document.createElement("div");
+
+    let borderClass = isMine
+      ? "border-indigo-200 bg-white"
+      : "border-red-200 bg-red-50";
+    if (sourceTerritoryId === terr.id)
+      borderClass = "border-green-500 ring-2 ring-green-200 bg-green-50";
+
+    div.className = `rounded-lg border p-4 shadow-sm hover:shadow-md transition cursor-pointer relative ${borderClass}`;
+
+    const unitsHere = terr.units || [];
+    const fortLevel = terr.fortification_level || 0;
+    const fortLabel =
+      fortLevel > 0 ? `<span class="ml-1 text-xs">🏰${fortLevel}</span>` : "";
+
+    // Add Upgrade Button if INCOME and Mine
+    let upgradeBtn = "";
+    const phase = document.getElementById("phase-display")?.textContent;
+    if (isMine && phase?.includes("INCOME") && fortLevel < 4) {
+      upgradeBtn = `<button class="btn-upgrade mt-2 w-full rounded bg-yellow-500 px-2 py-1 text-xs font-bold text-white hover:bg-yellow-600" data-tid="${terr.id}">Upgrade (5g+)</button>`;
     }
 
-    allTerritories.forEach(terr => {
-        const isMine = terr._ownerId === playerId;
-        const div = document.createElement("div");
-        
-        let borderClass = isMine ? "border-indigo-200 bg-white" : "border-red-200 bg-red-50";
-        if (sourceTerritoryId === terr.id) borderClass = "border-green-500 ring-2 ring-green-200 bg-green-50";
-
-        div.className = `rounded-lg border p-4 shadow-sm hover:shadow-md transition cursor-pointer relative ${borderClass}`;
-        
-        const unitsHere = terr.units || [];
-        const fortLevel = terr.fortification_level || 0;
-        const fortLabel = fortLevel > 0 ? `<span class="ml-1 text-xs">🏰${fortLevel}</span>` : '';
-
-        // Add Upgrade Button if INCOME and Mine
-        let upgradeBtn = '';
-        const phase = document.getElementById("phase-display")?.textContent;
-        if (isMine && phase?.includes("INCOME") && fortLevel < 4) {
-             upgradeBtn = `<button class="btn-upgrade mt-2 w-full rounded bg-yellow-500 px-2 py-1 text-xs font-bold text-white hover:bg-yellow-600" data-tid="${terr.id}">Upgrade (5g+)</button>`;
-        }
-        
-        div.innerHTML = `
+    div.innerHTML = `
             <div class="flex justify-between items-center mb-2">
-                <span class="font-bold uppercase text-xs tracking-wide ${isMine ? 'text-indigo-700' : 'text-red-700'}">${terr.terrain_type} ${fortLabel}</span>
+                <span class="font-bold uppercase text-xs tracking-wide ${isMine ? "text-indigo-700" : "text-red-700"}">${terr.terrain_type} ${fortLabel}</span>
                 <span class="text-[10px] text-gray-500">${terr._ownerName}</span>
             </div>
             <div class="text-xs text-gray-500 mb-2">Units: ${unitsHere.length}</div>
@@ -384,66 +402,71 @@ function renderWorld(players: any[]) {
             ${upgradeBtn}
         `;
 
-        // Interactions
-        div.onclick = async (e) => {
-            const target = e.target as HTMLElement;
-            if (target.classList.contains('btn-upgrade')) {
-                e.stopPropagation();
-                await upgradeStructure(target.dataset.tid!);
-                return;
-            }
+    // Interactions
+    div.onclick = async (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains("btn-upgrade")) {
+        e.stopPropagation();
+        await upgradeStructure(target.dataset.tid!);
+        return;
+      }
 
-            // Deployment Logic
-            if (selectedUnitId && isMine) {
-                await deployUnit(selectedUnitId, terr.id);
-                return;
-            }
+      // Deployment Logic
+      if (selectedUnitId && isMine) {
+        await deployUnit(selectedUnitId, terr.id);
+        return;
+      }
 
-            // Attack Logic
-            if (phase?.includes("WAR")) {
-                if (isMine) {
-                    // Select as source
-                    sourceTerritoryId = terr.id;
-                    renderWorld(players); // Re-render to show selection
-                } else if (sourceTerritoryId) {
-                    // Attack this target!
-                    if (confirm(`Attack ${terr._ownerName}'s ${terr.terrain_type} from your selected territory?`)) {
-                        await declareAttack(sourceTerritoryId, terr.id);
-                        sourceTerritoryId = null; // Reset
-                    }
-                }
-            }
-        };
+      // Attack Logic
+      if (phase?.includes("WAR")) {
+        if (isMine) {
+          // Select as source
+          sourceTerritoryId = terr.id;
+          renderWorld(players); // Re-render to show selection
+        } else if (sourceTerritoryId) {
+          // Attack this target!
+          if (
+            confirm(
+              `Attack ${terr._ownerName}'s ${terr.terrain_type} from your selected territory?`
+            )
+          ) {
+            await declareAttack(sourceTerritoryId, terr.id);
+            sourceTerritoryId = null; // Reset
+          }
+        }
+      }
+    };
 
-        container.appendChild(div);
-    });
+    container.appendChild(div);
+  });
 }
 
 async function upgradeStructure(territoryId: string) {
-    if (!confirm("Upgrade structure? Cost increases with level.")) return;
-    try {
-        const res = await fetch(`/api/games/${gameId}/build`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ playerId, territoryId }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error);
-        showFeedback("Upgraded!", "text-yellow-600");
-    } catch (e: any) {
-        showFeedback(e.message, "text-red-500");
-    }
+  if (!confirm("Upgrade structure? Cost increases with level.")) return;
+  try {
+    const res = await fetch(`/api/games/${gameId}/build`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId, territoryId }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    showFeedback("Upgraded!", "text-yellow-600");
+  } catch (e: any) {
+    showFeedback(e.message, "text-red-500");
+  }
 }
 
 function renderCombatModal(state: any) {
-    let modal = document.getElementById("combat-modal");
-    if (!modal) {
-        modal = document.createElement("div");
-        modal.id = "combat-modal";
-        modal.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm";
-        document.body.appendChild(modal);
-    }
+  let modal = document.getElementById("combat-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "combat-modal";
+    modal.className =
+      "fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm";
+    document.body.appendChild(modal);
+  }
 
-    modal.innerHTML = `
+  modal.innerHTML = `
         <div class="w-[500px] rounded-xl bg-white p-6 shadow-2xl">
             <h2 class="mb-4 text-2xl font-bold text-red-600 flex items-center gap-2">
                 <span>⚔️</span> Combat Active
@@ -470,13 +493,17 @@ function renderCombatModal(state: any) {
         </div>
     `;
 
-    document.getElementById("btn-combat-next")?.addEventListener("click", async () => {
-        try {
-            const res = await fetch(`/api/games/${gameId}/combat-step`, { method: "POST" });
-            if (!res.ok) throw new Error((await res.json()).error);
-        } catch (e: any) {
-            alert(e.message);
-        }
+  document
+    .getElementById("btn-combat-next")
+    ?.addEventListener("click", async () => {
+      try {
+        const res = await fetch(`/api/games/${gameId}/combat-step`, {
+          method: "POST",
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+      } catch (e: any) {
+        alert(e.message);
+      }
     });
 }
 

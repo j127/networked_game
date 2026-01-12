@@ -9,7 +9,7 @@ export const db = drizzle(sqlite, { schema });
 export function initDB() {
   // enable foreign keys
   sqlite.run("PRAGMA foreign_keys = ON;");
-  
+
   // Run migrations
   migrate(db, { migrationsFolder: "./drizzle" });
   console.log("Database initialized and migrated");
