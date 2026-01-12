@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 
 export const PHASES = ["INCOME", "EVENTS", "ACQUIRE", "WAR"] as const;
 
-export function advancePhase(gameId: string) {
+export async function advancePhase(gameId: string) {
   const game = getGame(gameId);
   if (!game) throw new Error("Game not found");
 
@@ -20,7 +20,7 @@ export function advancePhase(gameId: string) {
 
   if (nextPhaseIndex >= PHASES.length) {
     // End of Turn
-    endTurn(gameId);
+    await endTurn(gameId);
   } else {
     const nextPhase = PHASES[nextPhaseIndex];
     if (nextPhase) {
@@ -31,7 +31,7 @@ export function advancePhase(gameId: string) {
 
       // Hook for entering specific phases
       if (nextPhase === "INCOME") {
-        performIncomePhase(gameId);
+        await performIncomePhase(gameId);
       } else if (nextPhase === "EVENTS") {
         performEventsPhase(gameId);
       }
@@ -42,11 +42,11 @@ export function advancePhase(gameId: string) {
   }
 }
 
-export function endTurn(gameId: string) {
+export async function endTurn(gameId: string) {
   const game = getGame(gameId);
   if (!game) throw new Error("Game not found");
 
-  const players = getPlayersInGame(gameId);
+  const players = await getPlayersInGame(gameId);
   if (players.length === 0) return; // Should not happen
 
   const nextPlayerIndex = (game.turn_player_index + 1) % players.length;
@@ -60,5 +60,5 @@ export function endTurn(gameId: string) {
     .run();
 
   // New turn starts with Income
-  performIncomePhase(gameId);
+  await performIncomePhase(gameId);
 }

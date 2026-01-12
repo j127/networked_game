@@ -24,10 +24,30 @@ const btnNextPhase = document.getElementById("btn-next-phase");
 // --- Initialization ---
 
 async function init() {
+  // Check URL for Game ID
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlGameId = urlParams.get("gameId");
+
+  if (urlGameId && urlGameId !== gameId) {
+     // User clicked a shared link, switch to that game
+     console.log("Switching to shared game:", urlGameId);
+     localStorage.setItem("gameId", urlGameId);
+     localStorage.removeItem("playerId"); // Force re-join as new player
+     gameId = urlGameId;
+     playerId = null;
+     location.reload();
+     return;
+  }
+
   if (gameId && playerId) {
     joinModal?.classList.add("hidden");
     connectWebSocket();
-    // Fetch initial state? WS will send it on connect.
+    // Update URL if missing
+    if (!urlGameId) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("gameId", gameId);
+        window.history.replaceState({}, "", url);
+    }
   } else {
     // Show join modal (default)
   }
@@ -40,19 +60,27 @@ btnJoin?.addEventListener("click", async () => {
   const color = inputColor.value;
   if (!name) return alert("Name required");
 
-  // 1. Create Game (if needed, purely for demo we'll create one if none exists or just use a fixed one?)
-  // For this demo, let's just CREATE a new game every time we join 'fresh' or try to join a hardcoded one?
-  // Let's first create a game.
+  // 1. Create Game (if needed)
   try {
     let gid = gameId;
-    if (!gid) {
+    
+    // Check if we have a URL game ID to join first
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlGameId = urlParams.get("gameId");
+    
+    if (urlGameId) {
+        gid = urlGameId;
+    } 
+    else if (!gid) {
+      // Create NEW game
       const res = await fetch("/api/games", { method: "POST" });
       const data = await res.json();
       gid = data.gameId;
-      gameId = gid;
-      if (!gameId) throw new Error("No game ID returned"); // Type guard
-      localStorage.setItem("gameId", gameId);
     }
+
+    gameId = gid;
+    if (!gameId) throw new Error("No game ID returned");
+    localStorage.setItem("gameId", gameId);
 
     // 2. Join Game
     const pid = crypto.randomUUID(); // Generate local ID
@@ -67,14 +95,25 @@ btnJoin?.addEventListener("click", async () => {
     playerId = pid;
     localStorage.setItem("playerId", playerId); // Persist
 
-    // 3. Start Game (Auto-start for demo simplicity if we are the first/only?)
-    // Let's just try to start it.
+    // 3. Start Game (Try to start, if already started it might fail 400 but that's fine for 2nd player)
     await fetch(`/api/games/${gid}/start`, { method: "POST" });
 
     joinModal?.classList.add("hidden");
+    
+    // Update URL
+    const url = new URL(window.location.href);
+    url.searchParams.set("gameId", gid!);
+    window.history.pushState({}, "", url);
+    
     connectWebSocket();
   } catch (e: any) {
-    alert("Error joining: " + e.message);
+    if (e.message.includes("already started")) {
+        // Ignore specific start error for 2nd player
+        joinModal?.classList.add("hidden");
+        connectWebSocket();
+    } else {
+        alert("Error joining: " + e.message);
+    }
   }
 });
 
@@ -190,8 +229,41 @@ function updateUI(state: any) {
   }
 
   if (state.game) {
-    if (phaseDisplay)
-      phaseDisplay.textContent = `Phase: ${state.game.current_phase}`;
+    const phase = state.game.current_phase;
+    if (phaseDisplay) phaseDisplay.textContent = `Phase: ${phase}`;
+    
+    // Update Instructions & Button State
+    const instructionEl = document.getElementById("phase-instruction");
+    if (instructionEl) {
+        let text = "";
+        switch(phase) {
+            case "INCOME": text = "Collect Gold & Upgrade Territories."; break;
+            case "EVENTS": text = "Random events occur. Click Next Phase."; break;
+            case "ACQUIRE": text = "Draw Lands & Buy Units (5g)."; break;
+            case "WAR": text = "Select your territory -> Click enemy to Attack."; break;
+        }
+        instructionEl.textContent = text;
+    }
+
+    const isAcquire = phase === "ACQUIRE";
+    if (btnDrawLand) {
+        (btnDrawLand as HTMLButtonElement).disabled = !isAcquire;
+        btnDrawLand.className = isAcquire 
+            ? "rounded bg-green-500 px-4 py-2 font-bold text-white transition hover:bg-green-600 shadow" 
+            : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
+    }
+    if (btnDrawUnit) {
+        (btnDrawUnit as HTMLButtonElement).disabled = !isAcquire;
+        btnDrawUnit.className = isAcquire 
+            ? "rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 shadow"
+            : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
+    }
+
+    // Show Game ID in title or header (append if not there)
+    const title = document.querySelector("header h1");
+    if (title && !title.textContent?.includes(state.game.id.slice(0,4))) {
+        title.innerHTML = `King of the Tabletop <span class="text-xs font-normal text-gray-500 ml-2">Game: ${state.game.id.slice(0, 6)}...</span>`;
+    }
 
     if (state.game.combat_state) {
        const cs = JSON.parse(state.game.combat_state);
@@ -231,8 +303,18 @@ function renderHand(units: any[]) {
 
   units.forEach((unit) => {
     const div = document.createElement("div");
-    div.className = `w-32 shrink-0 rounded-lg border-2 border-solid p-4 text-center cursor-pointer transition select-none ${selectedUnitId === unit.id ? "border-blue-500 bg-blue-50 shadow-md transform -translate-y-1" : "border-gray-200 bg-white hover:border-gray-400"}`;
-    div.innerHTML = `<div class="font-bold text-sm">${unit.template_id}</div><div class="text-xs text-gray-500">Combat: ?</div>`;
+    // "Chit" style: Square-ish, thick border, shadow
+    const isSelected = selectedUnitId === unit.id;
+    div.className = `w-24 h-24 shrink-0 rounded-md border-4 p-2 flex flex-col items-center justify-center cursor-pointer transition select-none shadow-md
+        ${isSelected 
+            ? "border-blue-500 bg-blue-100 scale-105 ring-2 ring-blue-300" 
+            : "border-gray-400 bg-amber-50 hover:border-gray-600 hover:bg-amber-100"
+        }`;
+    
+    div.innerHTML = `
+        <div class="font-bold text-xs text-center leading-tight uppercase tracking-wider text-gray-800">${unit.template_id.replace(/_/g, " ")}</div>
+        <div class="mt-1 text-[10px] font-mono text-gray-600">⚔️ ?</div>
+    `;
     div.onclick = () => {
       if (selectedUnitId === unit.id) {
         selectedUnitId = null; // Deselect

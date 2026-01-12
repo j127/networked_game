@@ -142,7 +142,7 @@ app.post("/api/games/:gameId/start", async (c) => {
 app.post("/api/games/:gameId/next-phase", async (c) => {
   const gameId = c.req.param("gameId");
   try {
-    const nextPhase = advancePhase(gameId);
+    const nextPhase = await advancePhase(gameId);
     await broadcastGameState(gameId);
     return c.json({ success: true, phase: nextPhase });
   } catch (e: any) {

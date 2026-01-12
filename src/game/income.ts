@@ -8,8 +8,8 @@ import { eq, and } from "drizzle-orm";
 // So getPlayersInGame is safe if queries doesn't import income.
 import { getPlayersInGame } from "../db/queries";
 
-export function performIncomePhase(gameId: string) {
-  const playerList = getPlayersInGame(gameId);
+export async function performIncomePhase(gameId: string) {
+  const playerList = await getPlayersInGame(gameId);
 
   db.transaction(() => {
     for (const player of playerList) {
