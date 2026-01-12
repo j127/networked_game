@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>King of the Tabletop Online</title>
+    <!-- Tailwind CSS is loaded via main.ts -> style.css -->
+  </head>
+  <body class="min-h-screen bg-gray-100 font-sans text-gray-900">
+    <!-- Header -->
+    <header
+      class="sticky top-0 z-10 flex items-center justify-between bg-white p-4 shadow"
+    >
+      <h1 class="text-xl font-bold text-indigo-600">King of the Tabletop</h1>
+      <div id="status-bar" class="flex space-x-4 text-sm font-medium">
+        <span
+          id="phase-display"
+          class="rounded-full bg-indigo-100 px-3 py-1 text-indigo-800"
+          >Phase: Setup</span
+        >
+        <span
+          id="gold-display"
+          class="rounded-full bg-yellow-100 px-3 py-1 text-yellow-800"
+          >Gold: 0</span
+        >
+        <span
+          id="player-display"
+          class="rounded-full bg-gray-100 px-3 py-1 text-gray-800"
+          >Player: None</span
+        >
+      </div>
+    </header>
+
+    <main
+      class="container mx-auto flex h-[calc(100vh-80px)] flex-col gap-4 p-4 md:flex-row"
+    >
+      <!-- Side Panel: Controls & Logs -->
+      <aside class="flex w-full flex-col gap-4 md:w-1/4">
+        <!-- Controls -->
+        <div class="rounded-lg bg-white p-4 shadow">
+          <h2 class="mb-3 text-lg font-semibold">Actions</h2>
+          <div class="flex flex-col gap-2">
+            <button
+              id="btn-draw-land"
+              class="rounded bg-green-500 px-4 py-2 font-bold text-white transition hover:bg-green-600"
+            >
+              Draw Land (5g)
+            </button>
+            <button
+              id="btn-draw-unit"
+              class="rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600"
+            >
+              Draw Unit (5g)
+            </button>
+            <button
+              id="btn-next-phase"
+              class="rounded bg-blue-500 px-4 py-2 font-bold text-white transition hover:bg-blue-600"
+            >
+              Next Phase
+            </button>
+          </div>
+          <div id="action-feedback" class="mt-2 h-5 text-sm text-red-500"></div>
+        </div>
+
+        <!-- Logs -->
+        <div
+          class="flex flex-1 flex-col overflow-hidden rounded-lg bg-white p-4 shadow"
+        >
+          <h2 class="mb-2 text-lg font-semibold">Game Log</h2>
+          <div
+            id="game-logs"
+            class="flex-1 space-y-1 overflow-y-auto rounded bg-gray-50 p-2 font-mono text-sm"
+          >
+            <div class="text-gray-500 italic">Welcome to the game.</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Board Area -->
+      <section class="flex w-full flex-col gap-4 md:w-3/4">
+        <!-- Board / Territories -->
+        <div class="flex-1 overflow-y-auto rounded-lg bg-white p-4 shadow">
+          <h2 class="mb-3 text-lg font-semibold">My Kingdom</h2>
+          <div
+            id="kingdom-board"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+          >
+            <!-- Territory Cards will go here -->
+            <div
+              class="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center text-gray-400"
+            >
+              No territories owned.
+            </div>
+          </div>
+        </div>
+
+        <!-- Hand / Units -->
+        <div class="h-1/3 rounded-lg bg-white p-4 shadow">
+          <h2 class="mb-3 text-lg font-semibold">My Hand (Units)</h2>
+          <div id="player-hand" class="flex gap-4 overflow-x-auto pb-2">
+            <!-- Unit cards -->
+            <div
+              class="w-32 shrink-0 rounded-lg border-2 border-dashed border-gray-300 p-6 text-center text-gray-400"
+            >
+              Empty
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Join Modal (Simple Overlay) -->
+    <div
+      id="join-modal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    >
+      <div class="w-96 rounded-lg bg-white p-6 shadow-xl">
+        <h2 class="mb-4 text-2xl font-bold">Join Game</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Name</label>
+            <input
+              type="text"
+              id="join-name"
+              class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              placeholder="Enter your name"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Color</label>
+            <select
+              id="join-color"
+              class="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            >
+              <option value="red">Red</option>
+              <option value="blue">Blue</option>
+              <option value="green">Green</option>
+              <option value="yellow">Yellow</option>
+            </select>
+          </div>
+          <button
+            id="btn-join"
+            class="w-full rounded bg-indigo-600 px-4 py-2 font-bold text-white transition hover:bg-indigo-700"
+          >
+            Join Game
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

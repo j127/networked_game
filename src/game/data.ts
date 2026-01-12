@@ -96,6 +96,22 @@ export const THING_TEMPLATES: Record<string, ThingTemplate> = {
   },
 };
 
+export const LAND_TEMPLATES = {
+  forest: { terrain: "FOREST" },
+  plains: { terrain: "PLAINS" },
+  mountain: { terrain: "MOUNTAIN" },
+  swamp: { terrain: "SWAMP" },
+  desert: { terrain: "DESERT" },
+};
+
+export const LAND_DECK_DISTRIBUTION = [
+  { type: "forest", count: 10 },
+  { type: "plains", count: 10 },
+  { type: "mountain", count: 10 },
+  { type: "swamp", count: 5 },
+  { type: "desert", count: 5 },
+];
+
 // Simulation of deck distribution (total 124 items)
 // This is a rough approximation since we don't have the PDF text
 export const DECK_DISTRIBUTION: { templateId: string; count: number }[] = [

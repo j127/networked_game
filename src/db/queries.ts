@@ -1,24 +1,22 @@
 import { db } from "./index";
+import { games, players } from "./schema";
+import { eq, and } from "drizzle-orm";
+// import type { Player } from "./schema"; // Unused
+// Actually, let's export types from schema.ts using InferSelectModel
+import type { InferSelectModel } from "drizzle-orm";
+
+export type Game = InferSelectModel<typeof games>;
+export type PlayerType = InferSelectModel<typeof players>;
 
 export function createGame(): string {
   const id = crypto.randomUUID();
-  db.run("INSERT INTO games (id, status) VALUES (?, ?)", [id, "LOBBY"]);
+  db.insert(games).values({ id, status: "LOBBY" }).run();
   return id;
 }
 
-export interface Game {
-  id: string;
-  status: string;
-  turn_player_index: number;
-  current_phase: string;
-  combat_state: string | null;
-  created_at: string;
-}
-
 export function getGame(gameId: string): Game | null {
-  return db
-    .query("SELECT * FROM games WHERE id = ?")
-    .get(gameId) as Game | null;
+  const result = db.select().from(games).where(eq(games.id, gameId)).get();
+  return result || null;
 }
 
 export function addPlayer(
@@ -26,29 +24,96 @@ export function addPlayer(
   playerId: string,
   name: string,
   color: string
-) {
-  // Check if player already exists in this game to avoid duplicates if reconnecting with same storage
+): PlayerType {
+  // Check if player already exists
   const existing = db
-    .query("SELECT * FROM players WHERE id = ? AND game_id = ?")
-    .get(playerId, gameId);
+    .select()
+    .from(players)
+    .where(and(eq(players.id, playerId), eq(players.game_id, gameId)))
+    .get();
+
   if (existing) return existing;
 
-  db.run("INSERT INTO players (id, game_id, name, color) VALUES (?, ?, ?, ?)", [
-    playerId,
-    gameId,
-    name,
-    color,
-  ]);
-  return { id: playerId, game_id: gameId, name, color };
+  db.insert(players)
+    .values({
+      id: playerId,
+      game_id: gameId,
+      name,
+      color,
+      gold: 0,
+      prestige: 0,
+      is_eliminated: 0,
+    })
+    .run();
+
+  // Return the newly created player object (or fetch it)
+  // Drizzle with SQLite doesn't return inserted row by default in .run() unless using returning() which bun-sqlite might not fully support in run(), but .returning() works in queries.
+  // Let's try .returning().get()
+  const newPlayer = db
+    .select()
+    .from(players)
+    .where(eq(players.id, playerId))
+    .get();
+  if (!newPlayer) throw new Error("Failed to create player");
+  return newPlayer;
 }
 
-export function getPlayersInGame(gameId: string) {
-  return db.query("SELECT * FROM players WHERE game_id = ?").all(gameId);
+export function getPlayersInGame(gameId: string): PlayerType[] {
+  if (db.query?.players) {
+    const raw = db.query.players.findMany({
+      where: eq(players.game_id, gameId),
+      with: {
+        territories: {
+          with: {
+            units: true,
+          },
+        },
+        things: true,
+      },
+      // Note: In Drizzle, relations are not recursive by default unless specified.
+      // However, if there are back-references in the result (e.g. unit -> owner -> unit), stringify fails.
+      // We manually map to ensure a clean tree.
+    }) as any[];
+
+    return raw.map((p) => ({
+      id: p.id,
+      game_id: p.game_id,
+      name: p.name,
+      color: p.color,
+      gold: p.gold,
+      prestige: p.prestige,
+      is_eliminated: p.is_eliminated,
+      territories: p.territories?.map((t: any) => ({
+        id: t.id,
+        game_id: t.game_id,
+        owner_id: t.owner_id,
+        location: t.location,
+        terrain_type: t.terrain_type,
+        fortification_level: t.fortification_level,
+        settlement_type: t.settlement_type,
+        units: t.units?.map((u: any) => ({
+          id: u.id,
+          template_id: u.template_id,
+          location: u.location,
+          // Omit back-references
+        })),
+      })),
+      things: p.things?.map((t: any) => ({
+        id: t.id,
+        game_id: t.game_id,
+        owner_id: t.owner_id,
+        location: t.location,
+        template_id: t.template_id,
+        is_face_up: t.is_face_up,
+      })),
+    })) as PlayerType[];
+  }
+  return db.select().from(players).where(eq(players.game_id, gameId)).all();
 }
 
 export function startGame(gameId: string) {
-  db.run(
-    "UPDATE games SET status = 'ACTIVE', current_phase = 'INCOME' WHERE id = ?",
-    [gameId]
-  );
+  db.update(games)
+    .set({ status: "ACTIVE", current_phase: "INCOME" })
+    .where(eq(games.id, gameId))
+    .run();
 }

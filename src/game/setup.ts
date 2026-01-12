@@ -1,57 +1,59 @@
 import { db } from "../db";
-import { DECK_DISTRIBUTION, THING_TEMPLATES } from "./data";
+import { things, territories, players, games } from "../db/schema";
+import {
+  DECK_DISTRIBUTION,
+  THING_TEMPLATES,
+  LAND_DECK_DISTRIBUTION,
+} from "./data";
+import { eq } from "drizzle-orm";
 
-export function seedDeck(gameId: string) {
-  const insertStmt = db.prepare(`
-    INSERT INTO things (id, game_id, owner_id, location, template_id, is_face_up)
-    VALUES (?, ?, NULL, 'DECK', ?, 0)
-  `);
-
-  const things = [];
-  for (const item of DECK_DISTRIBUTION) {
+export function seedLandDeck(gameId: string) {
+  const lands = [];
+  for (const item of LAND_DECK_DISTRIBUTION) {
     for (let i = 0; i < item.count; i++) {
-      things.push({
+      lands.push({
         id: crypto.randomUUID(),
-        gameId,
-        templateId: item.templateId,
+        game_id: gameId,
+        location: "DECK",
+        terrain_type: (item as any).type.toUpperCase(),
       });
     }
   }
 
-  // Shuffle array (optional, but DB retrieval without order is "random" enough usually, but strictly speaking SQL doesn't guarantee random without ORDER BY RANDOM())
-  // But we insert them all. When drawing, we should pick random or top.
-  // If we just pick "WHERE location='DECK' LIMIT 1", it's effectively one of them.
-  // Ideally we pick random when drawing.
+  db.insert(territories).values(lands).run();
 
-  const transaction = db.transaction((items) => {
-    for (const thing of items) {
-      insertStmt.run(thing.id, thing.gameId, thing.templateId);
+  return lands.length;
+}
+
+export function seedDeck(gameId: string) {
+  const deck = [];
+  for (const item of DECK_DISTRIBUTION) {
+    for (let i = 0; i < item.count; i++) {
+      deck.push({
+        id: crypto.randomUUID(),
+        game_id: gameId,
+        location: "DECK",
+        template_id: item.templateId,
+      });
     }
-  });
+  }
 
-  transaction(things);
-  return things.length;
+  db.insert(things).values(deck).run();
+
+  return deck.length;
 }
 
 export function initializeGameInternal(gameId: string) {
   // 1. Update Game Status
-  db.run(
-    "UPDATE games SET status = 'ACTIVE', current_phase = 'INCOME' WHERE id = ?",
-    [gameId]
-  );
+  db.update(games)
+    .set({ status: "ACTIVE", current_phase: "INCOME" })
+    .where(eq(games.id, gameId))
+    .run();
 
-  // 2. Seed Deck
+  // 2. Seed Decks
   seedDeck(gameId);
+  seedLandDeck(gameId);
 
-  // 3. Initialize Map? (Territories from Land Deck?)
-  // Specs say: "Phase 3: Acquire Tiles -> 1. Land Draw... Random from LAND_DECK".
-  // "Territory Management: ... Assigning land tiles to players"
-  // So map starts empty?
-  // "Phase 1: Collection... 1. Income: Query all territories where owner_id = ?"
-  // "The physical board (The Land Deck that has been played)"
-  // So territories are cards too?
-  // Instructions: "The 'Land Deck' that has been played -> territories table"
-  // So we need a LAND_DECK too.
-
-  // For now, I'll just seed the Unit Deck (Things).
+  // 4. Give Starting Gold (e.g. 10)
+  db.update(players).set({ gold: 10 }).where(eq(players.game_id, gameId)).run();
 }

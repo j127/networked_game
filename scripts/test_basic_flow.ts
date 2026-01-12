@@ -37,17 +37,36 @@ async function testGameFlow() {
   const startData = await startRes.json();
   console.log("Game started:", startData);
 
-  // Advance Phase
-  console.log("Advancing phase...");
+  // Advance to EVENTS
+  console.log("Advancing phase to EVENTS...");
   const phaseRes = await fetch(`${BASE_URL}/api/games/${gameId}/next-phase`, {
     method: "POST",
   });
-  if (!phaseRes.ok) {
-    const text = await phaseRes.text();
-    throw new Error("Failed to advance phase: " + text);
-  }
+  if (!phaseRes.ok) throw new Error("Failed to advance phase");
   const phaseData = await phaseRes.json();
   console.log("Phase advanced:", phaseData);
+
+  // Advance to ACQUIRE
+  console.log("Advancing phase to ACQUIRE...");
+  const phaseRes2 = await fetch(`${BASE_URL}/api/games/${gameId}/next-phase`, {
+    method: "POST",
+  });
+  if (!phaseRes2.ok) throw new Error("Failed to advance phase to ACQUIRE");
+  console.log("Phase advanced:", await phaseRes2.json());
+
+  // Draw Land
+  console.log("Drawing Land...");
+  const drawRes = await fetch(`${BASE_URL}/api/games/${gameId}/draw-land`, {
+    method: "POST",
+    body: JSON.stringify({ playerId }),
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!drawRes.ok) {
+    const err = await drawRes.text();
+    throw new Error("Failed to draw land: " + err);
+  }
+  const drawData = await drawRes.json();
+  console.log("Land drawn:", drawData);
 
   // Connect WS
   // Bun's WebSocket client
