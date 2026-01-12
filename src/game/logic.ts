@@ -2,6 +2,7 @@ import { db } from "../db";
 import { games } from "../db/schema";
 import { getGame, getPlayersInGame } from "../db/queries";
 import { performIncomePhase } from "./income";
+import { performEventsPhase } from "./events";
 import { eq } from "drizzle-orm";
 
 export const PHASES = ["INCOME", "EVENTS", "ACQUIRE", "WAR"] as const;
@@ -31,6 +32,8 @@ export function advancePhase(gameId: string) {
       // Hook for entering specific phases
       if (nextPhase === "INCOME") {
         performIncomePhase(gameId);
+      } else if (nextPhase === "EVENTS") {
+        performEventsPhase(gameId);
       }
 
       return nextPhase;

@@ -1,3 +1,4 @@
+.gemini-clipboard/
 **/*.pdf
 .env
 .envrc

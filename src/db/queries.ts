@@ -58,9 +58,9 @@ export function addPlayer(
   return newPlayer;
 }
 
-export function getPlayersInGame(gameId: string): PlayerType[] {
+export async function getPlayersInGame(gameId: string): Promise<PlayerType[]> {
   if (db.query?.players) {
-    const raw = db.query.players.findMany({
+    const raw = await db.query.players.findMany({
       where: eq(players.game_id, gameId),
       with: {
         territories: {
@@ -73,9 +73,9 @@ export function getPlayersInGame(gameId: string): PlayerType[] {
       // Note: In Drizzle, relations are not recursive by default unless specified.
       // However, if there are back-references in the result (e.g. unit -> owner -> unit), stringify fails.
       // We manually map to ensure a clean tree.
-    }) as any[];
+    });
 
-    return raw.map((p) => ({
+    return (raw as any[]).map((p) => ({
       id: p.id,
       game_id: p.game_id,
       name: p.name,

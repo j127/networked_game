@@ -104,7 +104,14 @@ function connectWebSocket() {
 
   ws.onclose = () => {
     console.log("Disconnected");
-    updateStatus("Disconnected");
+    updateStatus("Disconnected (Server Offline?)");
+    showFeedback("Connection lost. Is the server running?", "text-red-600 font-bold");
+  };
+
+  ws.onerror = (err) => {
+    console.error("WS Error:", err);
+    updateStatus("Connection Error");
+    showFeedback("Failed to connect to server.", "text-red-600 font-bold");
   };
 }
 
@@ -173,30 +180,31 @@ btnNextPhase?.addEventListener("click", async () => {
 // --- Rendering ---
 
 function updateUI(state: any) {
+  // Check for invalid session (Game deleted or Player deleted)
+  if (!state.game || (state.players && !state.players.find((p: any) => p.id === playerId))) {
+    console.warn("Invalid session detected. Resetting...");
+    localStorage.removeItem("gameId");
+    localStorage.removeItem("playerId");
+    location.reload(); // Reload to show join modal
+    return;
+  }
+
   if (state.game) {
     if (phaseDisplay)
       phaseDisplay.textContent = `Phase: ${state.game.current_phase}`;
+
+    if (state.game.combat_state) {
+       const cs = JSON.parse(state.game.combat_state);
+       renderCombatModal(cs);
+    } else {
+       document.getElementById("combat-modal")?.remove();
+    }
   }
 
-  // Render Hand and Kingdom
-  // Note: state.players currently only has partial data, we need full state.
-  // The backend was updated to send { game, players }, but players might not include nested things/territories
-  // unless we specifically query for them or join them.
-  // Actually, getPlayersInGame logic needs to be checked if it returns related data.
-  // IF NOT, we might not see the units/territories.
-  // Let's check getPlayersInGame or implement separate fetching if needed.
-  // Assuming the payload includes or we fetch separately.
-  // For now, let's look at what we have.
-  // Ideally, we want the payload to contain:
-  // players: [ { ..., territories: [], things: [] } ]
-
-  // Checking src/db/queries.ts (not visible but assumed) or we can just fetch distinct endpoints.
-  // Let's assume for now we need to fetch 'my' assets or the WS sends them.
-
-  // Implementation of specific rendering:
   if (!state.players) return;
+  
+  // Render ME
   const me = state.players.find((p: any) => p.id === playerId);
-
   if (me) {
     playerState = me;
     if (goldDisplay) goldDisplay.textContent = `Gold: ${me.gold}`;
@@ -205,8 +213,10 @@ function updateUI(state: any) {
     // Filter things for Hand (location === 'HAND')
     const hand = (me.things || []).filter((t: any) => t.location === "HAND");
     renderHand(hand);
-    renderKingdom(me.territories || []);
   }
+
+  // Render World (All Players)
+  renderWorld(state.players);
 }
 
 function renderHand(units: any[]) {
@@ -235,42 +245,157 @@ function renderHand(units: any[]) {
   });
 }
 
-function renderKingdom(territories: any[]) {
-  const container = document.getElementById("kingdom-board");
-  if (!container) return;
-  container.innerHTML = "";
+// Global state for attack planning
+let sourceTerritoryId: string | null = null;
 
-  if (territories.length === 0) {
-    container.innerHTML = `<div class="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center text-gray-400 col-span-full">No territories owned.</div>`;
-    return;
-  }
+function renderWorld(players: any[]) {
+    const container = document.getElementById("kingdom-board");
+    if (!container) return;
+    container.innerHTML = "";
+    
+    // Flatten territories
+    const allTerritories: any[] = [];
+    players.forEach(p => {
+        if(p.territories) {
+            p.territories.forEach((t: any) => {
+                t._ownerName = p.name;
+                t._ownerId = p.id;
+                allTerritories.push(t);
+            });
+        }
+    });
 
-  territories.forEach((terr) => {
-    const div = document.createElement("div");
-    div.className =
-      "rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition cursor-pointer";
-    // Show units on this territory?
-    // We need 'things' that are on this territory. Handled by backend structure?
-    // For now just show terrain.
-    const unitsHere = terr.units || [];
+    if (allTerritories.length === 0) {
+        container.innerHTML = `<div class="col-span-full text-center text-gray-400">No territories claimed yet.</div>`;
+        return;
+    }
 
-    div.innerHTML = `
-            <div class="font-bold text-indigo-700 uppercase tracking-wide text-xs mb-2">${terr.terrain_type}</div>
-            <div class="text-xs text-gray-500">Units: ${unitsHere.length}</div>
-            <div class="mt-2 space-y-1">
-                ${unitsHere.map((u: any) => `<div class="bg-indigo-50 text-indigo-800 text-xs px-2 py-1 rounded">${u.template_id}</div>`).join("")}
+    allTerritories.forEach(terr => {
+        const isMine = terr._ownerId === playerId;
+        const div = document.createElement("div");
+        
+        let borderClass = isMine ? "border-indigo-200 bg-white" : "border-red-200 bg-red-50";
+        if (sourceTerritoryId === terr.id) borderClass = "border-green-500 ring-2 ring-green-200 bg-green-50";
+
+        div.className = `rounded-lg border p-4 shadow-sm hover:shadow-md transition cursor-pointer relative ${borderClass}`;
+        
+        const unitsHere = terr.units || [];
+        const fortLevel = terr.fortification_level || 0;
+        const fortLabel = fortLevel > 0 ? `<span class="ml-1 text-xs">🏰${fortLevel}</span>` : '';
+
+        // Add Upgrade Button if INCOME and Mine
+        let upgradeBtn = '';
+        const phase = document.getElementById("phase-display")?.textContent;
+        if (isMine && phase?.includes("INCOME") && fortLevel < 4) {
+             upgradeBtn = `<button class="btn-upgrade mt-2 w-full rounded bg-yellow-500 px-2 py-1 text-xs font-bold text-white hover:bg-yellow-600" data-tid="${terr.id}">Upgrade (5g+)</button>`;
+        }
+        
+        div.innerHTML = `
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold uppercase text-xs tracking-wide ${isMine ? 'text-indigo-700' : 'text-red-700'}">${terr.terrain_type} ${fortLabel}</span>
+                <span class="text-[10px] text-gray-500">${terr._ownerName}</span>
             </div>
+            <div class="text-xs text-gray-500 mb-2">Units: ${unitsHere.length}</div>
+            <div class="space-y-1">
+                ${unitsHere.map((u: any) => `<div class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded border border-gray-200">${u.template_id}</div>`).join("")}
+            </div>
+            ${upgradeBtn}
         `;
 
-    div.onclick = async () => {
-      if (selectedUnitId) {
-        // Try to deploy
-        await deployUnit(selectedUnitId, terr.id);
-      }
-    };
+        // Interactions
+        div.onclick = async (e) => {
+            const target = e.target as HTMLElement;
+            if (target.classList.contains('btn-upgrade')) {
+                e.stopPropagation();
+                await upgradeStructure(target.dataset.tid!);
+                return;
+            }
 
-    container.appendChild(div);
-  });
+            // Deployment Logic
+            if (selectedUnitId && isMine) {
+                await deployUnit(selectedUnitId, terr.id);
+                return;
+            }
+
+            // Attack Logic
+            if (phase?.includes("WAR")) {
+                if (isMine) {
+                    // Select as source
+                    sourceTerritoryId = terr.id;
+                    renderWorld(players); // Re-render to show selection
+                } else if (sourceTerritoryId) {
+                    // Attack this target!
+                    if (confirm(`Attack ${terr._ownerName}'s ${terr.terrain_type} from your selected territory?`)) {
+                        await declareAttack(sourceTerritoryId, terr.id);
+                        sourceTerritoryId = null; // Reset
+                    }
+                }
+            }
+        };
+
+        container.appendChild(div);
+    });
+}
+
+async function upgradeStructure(territoryId: string) {
+    if (!confirm("Upgrade structure? Cost increases with level.")) return;
+    try {
+        const res = await fetch(`/api/games/${gameId}/build`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ playerId, territoryId }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        showFeedback("Upgraded!", "text-yellow-600");
+    } catch (e: any) {
+        showFeedback(e.message, "text-red-500");
+    }
+}
+
+function renderCombatModal(state: any) {
+    let modal = document.getElementById("combat-modal");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "combat-modal";
+        modal.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm";
+        document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+        <div class="w-[500px] rounded-xl bg-white p-6 shadow-2xl">
+            <h2 class="mb-4 text-2xl font-bold text-red-600 flex items-center gap-2">
+                <span>⚔️</span> Combat Active
+            </h2>
+            
+            <div class="mb-4 space-y-2 bg-gray-50 p-4 rounded-lg border border-gray-200 max-h-60 overflow-y-auto font-mono text-sm">
+                ${state.logs.map((l: string) => `<div class="border-b border-gray-100 last:border-0 pb-1">${l}</div>`).join("")}
+            </div>
+
+            <div class="flex justify-between items-center bg-gray-100 p-3 rounded mb-4">
+                 <div class="text-center">
+                    <div class="text-xs text-gray-500">Stage</div>
+                    <div class="font-bold">${state.stage}</div>
+                 </div>
+                 <div class="text-center">
+                    <div class="text-xs text-gray-500">Round</div>
+                    <div class="font-bold">${state.currentRound}</div>
+                 </div>
+            </div>
+
+            <button id="btn-combat-next" class="w-full rounded bg-red-600 px-4 py-3 font-bold text-white transition hover:bg-red-700 shadow-lg">
+                Roll / Next Step
+            </button>
+        </div>
+    `;
+
+    document.getElementById("btn-combat-next")?.addEventListener("click", async () => {
+        try {
+            const res = await fetch(`/api/games/${gameId}/combat-step`, { method: "POST" });
+            if (!res.ok) throw new Error((await res.json()).error);
+        } catch (e: any) {
+            alert(e.message);
+        }
+    });
 }
 
 async function deployUnit(thingId: string, territoryId: string) {

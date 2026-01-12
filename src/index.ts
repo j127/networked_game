@@ -7,6 +7,8 @@ import { initializeGameInternal } from "./game/setup";
 import { advancePhase } from "./game/logic";
 import { drawLand } from "./game/game_actions";
 import { drawThing, deployThing } from "./game/unit_actions";
+import { declareAttack, resolveCombatStep } from "./game/combat";
+import { buildStructure } from "./game/build";
 
 // ... (existing routes)
 
@@ -44,7 +46,7 @@ app.post("/api/games/:gameId/draw-thing", async (c) => {
   const { playerId } = body;
   try {
     const thing = drawThing(gameId, playerId);
-    broadcastGameState(gameId);
+    await broadcastGameState(gameId);
     return c.json({ success: true, thing });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
@@ -57,8 +59,45 @@ app.post("/api/games/:gameId/deploy-thing", async (c) => {
   const { playerId, thingId, territoryId } = body;
   try {
     deployThing(gameId, playerId, thingId, territoryId);
-    broadcastGameState(gameId);
+    await broadcastGameState(gameId);
     return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/attack", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, fromTerritoryId, toTerritoryId, unitIds } = body;
+  try {
+    const combatState = declareAttack(gameId, playerId, fromTerritoryId, toTerritoryId, unitIds);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, combatState });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/combat-step", async (c) => {
+  const gameId = c.req.param("gameId");
+  try {
+    const state = resolveCombatStep(gameId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, state });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/build", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, territoryId } = body;
+  try {
+    const result = buildStructure(gameId, playerId, territoryId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
   }
@@ -69,9 +108,9 @@ const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
 // Connection Manager
 const connections = new Map<string, Set<any>>();
 
-function broadcastGameState(gameId: string) {
+async function broadcastGameState(gameId: string) {
   const game = getGame(gameId);
-  const players = getPlayersInGame(gameId);
+  const players = await getPlayersInGame(gameId);
   if (!game) return;
 
   const payload = JSON.stringify({ type: "GAME_STATE", game, players });
@@ -83,23 +122,28 @@ function broadcastGameState(gameId: string) {
   }
 }
 
-app.post("/api/games/:gameId/start", (c) => {
+app.post("/api/games/:gameId/start", async (c) => {
   const gameId = c.req.param("gameId");
   const game = getGame(gameId);
   if (!game) return c.json({ error: "Game not found" }, 404);
   if (game.status !== "LOBBY")
     return c.json({ error: "Game already started" }, 400);
 
-  initializeGameInternal(gameId);
-  broadcastGameState(gameId);
-  return c.json({ success: true, status: "ACTIVE" });
+  try {
+    initializeGameInternal(gameId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, status: "ACTIVE" });
+  } catch (e: any) {
+    console.error("Error starting game:", e);
+    return c.json({ error: e.message || "Failed to start game" }, 500);
+  }
 });
 
-app.post("/api/games/:gameId/next-phase", (c) => {
+app.post("/api/games/:gameId/next-phase", async (c) => {
   const gameId = c.req.param("gameId");
   try {
     const nextPhase = advancePhase(gameId);
-    broadcastGameState(gameId);
+    await broadcastGameState(gameId);
     return c.json({ success: true, phase: nextPhase });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
@@ -112,7 +156,7 @@ app.post("/api/games/:gameId/draw-land", async (c) => {
   const { playerId } = body;
   try {
     const land = drawLand(gameId, playerId);
-    broadcastGameState(gameId);
+    await broadcastGameState(gameId);
     return c.json({ success: true, land });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
@@ -128,19 +172,24 @@ app.get(
     const playerId = url.searchParams.get("playerId");
 
     return {
-      onOpen(event, ws) {
-        console.log(`Connection opened for game ${gameId}, player ${playerId}`);
+      async onOpen(event, ws) {
+        try {
+          console.log(`Connection opened for game ${gameId}, player ${playerId}`);
 
-        // Add to connections
-        if (!connections.has(gameId)) {
-          connections.set(gameId, new Set());
+          // Add to connections
+          if (!connections.has(gameId)) {
+            connections.set(gameId, new Set());
+          }
+          connections.get(gameId)?.add(ws);
+
+          // Send initial state
+          const game = getGame(gameId);
+          const players = await getPlayersInGame(gameId);
+          ws.send(JSON.stringify({ type: "GAME_STATE", game, players }));
+        } catch (e) {
+          console.error("Error in WS onOpen:", e);
+          ws.close(1011, "Internal Server Error");
         }
-        connections.get(gameId)?.add(ws);
-
-        // Send initial state
-        const game = getGame(gameId);
-        const players = getPlayersInGame(gameId);
-        ws.send(JSON.stringify({ type: "GAME_STATE", game, players }));
       },
       onMessage(event, ws) {
         console.log(`Message received: ${event.data}`);
