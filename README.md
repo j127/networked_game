@@ -1,5 +1,13 @@
 # networked_game
 
+```bash
+bun install
+bun run dev
+bun run frontend
+```
+
+---
+
 Please see the [specs](./specs/) directory for the technical specifications.
 
 ## Project Status Report (2026-01-11)
