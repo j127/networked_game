@@ -32,6 +32,7 @@ Always ask before committing code, never automatically commit code.
 2.  **Database:** The schema is defined in `specs/instructions.md`. Changes to the schema should be reflected there.
 3.  **State Management:** The game state is persisted in SQLite. The server creates a WebSocket connection for real-time updates (`/ws/:gameId`).
 4.  **Strict Types:** Maintain strict TypeScript typing, especially for game entities ("Things", "Territories") as defined in the specs.
+5.  **Testing:** Use `vitest` for unit and integration testing. Tests should be placed in the `tests/` directory. Write tests for all new code.
 
 ## Getting Started (Current Status)
 
@@ -47,7 +48,7 @@ The project is currently in the **initialization phase**.
 
 - **Install Dependencies:** `bun install`
 - **Run Dev Server:** `bun run index.ts` (or configured script)
-- **Run Tests:** `bun test` (Future)
+- **Run Tests:** `bun run test`
 
 ## Reference
 
