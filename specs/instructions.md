@@ -22,8 +22,12 @@ CREATE TABLE games (
     id TEXT PRIMARY KEY,
     status TEXT DEFAULT 'LOBBY', -- LOBBY, ACTIVE, FINISHED
     turn_player_index INTEGER DEFAULT 0, -- Index of the player whose turn it is
+    turn_number INTEGER DEFAULT 1,
     current_phase TEXT DEFAULT 'SETUP', -- INCOME, EVENTS, ACQUIRE, COMBAT, END
     combat_state TEXT, -- JSON blob storing current battle details if in combat
+    land_draw_state TEXT, -- JSON blob storing pending land instruction
+    turn_free_draw_used INTEGER DEFAULT 0,
+    turn_purchase_used INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -45,8 +49,13 @@ CREATE TABLE territories (
     game_id TEXT,
     owner_id TEXT, -- NULL if unowned (but explored?), usually owned once placed
     terrain_type TEXT, -- FOREST, PLAINS, MOUNTAIN, SWAMP, DESERT
+    instruction_type TEXT, -- FOR_SALE, PUBLIC_AUCTION, FIGHT
+    instruction_value INTEGER, -- Gold cost when instruction is FOR_SALE
     fortification_level INTEGER DEFAULT 0, -- 0=None, 1=Tower, 2=Keep, 3=Castle, 4=Citadel
     settlement_type TEXT, -- NULL, 'VILLAGE', 'CITY', 'MINE_GOLD', 'MINE_SILVER', 'MINE_COPPER'
+    settlement_value INTEGER DEFAULT 0, -- gold/prestige value for settlement
+    last_fort_build_turn INTEGER DEFAULT 0,
+    last_settlement_build_turn INTEGER DEFAULT 0,
     FOREIGN KEY(game_id) REFERENCES games(id),
     FOREIGN KEY(owner_id) REFERENCES players(id)
 );

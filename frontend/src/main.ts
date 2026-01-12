@@ -19,6 +19,8 @@ const actionFeedback = document.getElementById("action-feedback");
 const kingdomBoard = document.getElementById("kingdom-board");
 
 const btnDrawLand = document.getElementById("btn-draw-land");
+const btnPurchaseTiles = document.getElementById("btn-purchase-tiles");
+const btnFreeDraw = document.getElementById("btn-free-draw");
 const btnNextPhase = document.getElementById("btn-next-phase");
 
 // --- Initialization ---
@@ -158,8 +160,6 @@ function connectWebSocket() {
 
 // --- UI Actions ---
 
-const btnDrawUnit = document.getElementById("btn-draw-unit");
-
 // State for Interaction
 let selectedUnitId: string | null = null;
 
@@ -178,17 +178,80 @@ btnDrawLand?.addEventListener("click", async () => {
       const err = await res.json();
       throw new Error(err.error);
     }
-    showFeedback("Land acquired!", "text-green-600");
+    const data = await res.json();
+    if (data.status === "CLAIMED") {
+      showFeedback("Land acquired!", "text-green-600");
+      return;
+    }
+    if (data.status === "INSTRUCTION") {
+      await handleLandInstruction(data.instruction);
+    }
   } catch (e: any) {
     showFeedback(e.message, "text-red-500");
   }
 });
 
-btnDrawUnit?.addEventListener("click", async () => {
+async function handleLandInstruction(instruction: any) {
   if (!gameId || !playerId) return;
-  showFeedback("Drawing unit...");
+  const type = instruction?.instructionType;
+  if (type === "FOR_SALE") {
+    const cost = instruction.instructionValue || 0;
+    const accept = confirm(`Land for sale: pay ${cost} gold?`);
+    const res = await fetch(`/api/games/${gameId}/resolve-land`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId, accept }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    showFeedback(accept ? "Land purchased!" : "Land returned.", "text-green-600");
+    return;
+  }
+  if (type === "PUBLIC_AUCTION") {
+    const bidStr = prompt("Public auction: enter your bid (0 to pass)", "0");
+    const bidAmount = Number(bidStr);
+    const res = await fetch(`/api/games/${gameId}/resolve-land`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId, bidAmount }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    showFeedback("Auction resolved.", "text-green-600");
+    return;
+  }
+  if (type === "FIGHT") {
+    showFeedback("Fight instruction not implemented yet.", "text-red-500");
+    return;
+  }
+  showFeedback("Unknown land instruction.", "text-red-500");
+}
+
+btnPurchaseTiles?.addEventListener("click", async () => {
+  if (!gameId || !playerId) return;
+  const countStr = prompt("How many tiles to buy? (1-4)", "1");
+  const count = Number(countStr);
+  if (!count || Number.isNaN(count)) return;
+  showFeedback("Purchasing tiles...");
   try {
-    const res = await fetch(`/api/games/${gameId}/draw-thing`, {
+    const res = await fetch(`/api/games/${gameId}/purchase-tiles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerId, count }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    showFeedback("Tiles acquired!", "text-green-600");
+  } catch (e: any) {
+    showFeedback(e.message, "text-red-500");
+  }
+});
+
+btnFreeDraw?.addEventListener("click", async () => {
+  if (!gameId || !playerId) return;
+  showFeedback("Drawing free tile...");
+  try {
+    const res = await fetch(`/api/games/${gameId}/free-draw`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ playerId }),
@@ -197,7 +260,7 @@ btnDrawUnit?.addEventListener("click", async () => {
       const err = await res.json();
       throw new Error(err.error);
     }
-    showFeedback("Unit acquired!", "text-green-600");
+    showFeedback("Free draw complete!", "text-green-600");
   } catch (e: any) {
     showFeedback(e.message, "text-red-500");
   }
@@ -249,7 +312,7 @@ function updateUI(state: any) {
           text = "Random events occur. Click Next Phase.";
           break;
         case "ACQUIRE":
-          text = "Draw Lands & Buy Units (5g).";
+          text = "Draw land, buy tiles (2/5/10/20), and take a free draw.";
           break;
         case "WAR":
           text = "Select your territory -> Click enemy to Attack.";
@@ -265,10 +328,16 @@ function updateUI(state: any) {
         ? "rounded bg-green-500 px-4 py-2 font-bold text-white transition hover:bg-green-600 shadow"
         : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
     }
-    if (btnDrawUnit) {
-      (btnDrawUnit as HTMLButtonElement).disabled = !isAcquire;
-      btnDrawUnit.className = isAcquire
+    if (btnPurchaseTiles) {
+      (btnPurchaseTiles as HTMLButtonElement).disabled = !isAcquire;
+      btnPurchaseTiles.className = isAcquire
         ? "rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 shadow"
+        : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
+    }
+    if (btnFreeDraw) {
+      (btnFreeDraw as HTMLButtonElement).disabled = !isAcquire;
+      btnFreeDraw.className = isAcquire
+        ? "rounded bg-amber-500 px-4 py-2 font-bold text-white transition hover:bg-amber-600 shadow"
         : "rounded bg-gray-300 px-4 py-2 font-bold text-gray-500 cursor-not-allowed";
     }
 

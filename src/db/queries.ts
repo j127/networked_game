@@ -8,25 +8,29 @@ import type { InferSelectModel } from "drizzle-orm";
 export type Game = InferSelectModel<typeof games>;
 export type PlayerType = InferSelectModel<typeof players>;
 
-export function createGame(): string {
+export async function createGame(): Promise<string> {
   const id = crypto.randomUUID();
-  db.insert(games).values({ id, status: "LOBBY" }).run();
+  await db.insert(games).values({ id, status: "LOBBY" }).run();
   return id;
 }
 
-export function getGame(gameId: string): Game | null {
-  const result = db.select().from(games).where(eq(games.id, gameId)).get();
+export async function getGame(gameId: string): Promise<Game | null> {
+  const result = await db
+    .select()
+    .from(games)
+    .where(eq(games.id, gameId))
+    .get();
   return result || null;
 }
 
-export function addPlayer(
+export async function addPlayer(
   gameId: string,
   playerId: string,
   name: string,
   color: string
-): PlayerType {
+): Promise<PlayerType> {
   // Check if player already exists
-  const existing = db
+  const existing = await db
     .select()
     .from(players)
     .where(and(eq(players.id, playerId), eq(players.game_id, gameId)))
@@ -34,7 +38,8 @@ export function addPlayer(
 
   if (existing) return existing;
 
-  db.insert(players)
+  await db
+    .insert(players)
     .values({
       id: playerId,
       game_id: gameId,
@@ -49,7 +54,7 @@ export function addPlayer(
   // Return the newly created player object (or fetch it)
   // Drizzle with SQLite doesn't return inserted row by default in .run() unless using returning() which bun-sqlite might not fully support in run(), but .returning() works in queries.
   // Let's try .returning().get()
-  const newPlayer = db
+  const newPlayer = await db
     .select()
     .from(players)
     .where(eq(players.id, playerId))
@@ -91,6 +96,9 @@ export async function getPlayersInGame(gameId: string): Promise<PlayerType[]> {
         terrain_type: t.terrain_type,
         fortification_level: t.fortification_level,
         settlement_type: t.settlement_type,
+        settlement_value: t.settlement_value,
+        instruction_type: t.instruction_type,
+        instruction_value: t.instruction_value,
         units: t.units?.map((u: any) => ({
           id: u.id,
           template_id: u.template_id,
@@ -111,8 +119,9 @@ export async function getPlayersInGame(gameId: string): Promise<PlayerType[]> {
   return db.select().from(players).where(eq(players.game_id, gameId)).all();
 }
 
-export function startGame(gameId: string) {
-  db.update(games)
+export async function startGame(gameId: string) {
+  await db
+    .update(games)
     .set({ status: "ACTIVE", current_phase: "INCOME" })
     .where(eq(games.id, gameId))
     .run();

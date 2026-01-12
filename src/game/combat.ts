@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { games, things, territories, players } from "../db/schema";
+import { games, things, territories } from "../db/schema";
 import { eq, inArray, and } from "drizzle-orm";
 import { THING_TEMPLATES } from "./data";
 import { getGame } from "../db/queries";
@@ -10,91 +10,77 @@ export interface CombatState {
   territoryId: string;
   attackerUnitIds: string[];
   defenderUnitIds: string[];
-  currentRound: number;
-  stage: "INITIATIVE" | "RANGED" | "MELEE" | "CASUALTIES";
-  initiativeWinner?: string; // 'ATTACKER' | 'DEFENDER'
-  pendingCasualties?: {
-    playerId: string;
-    count: number;
-    source: "RANGED" | "MELEE" | "MAGIC";
-  };
+  stage: "INITIATIVE" | "RANGED" | "MELEE";
+  initiativeWinner?: "ATTACKER" | "DEFENDER";
   logs: string[];
+  fortRemaining: number;
 }
 
-export function declareAttack(
+export async function declareAttack(
   gameId: string,
   attackerId: string,
   fromTerritoryId: string,
   toTerritoryId: string,
   unitIds: string[]
 ) {
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) throw new Error("Game not found");
-  if (game.current_phase !== "WAR")
-    throw new Error("Can only attack during WAR phase");
+  if (game.current_phase !== "WAR") throw new Error("Can only attack during WAR phase");
 
-  // 1. Validation
-  const fromTerritory = db
+  const fromTerritory = await db
     .select()
     .from(territories)
-    .where(eq(territories.id, fromTerritoryId))
+    .where(and(eq(territories.id, fromTerritoryId), eq(territories.game_id, gameId)))
     .get();
-  const toTerritory = db
+  const toTerritory = await db
     .select()
     .from(territories)
-    .where(eq(territories.id, toTerritoryId))
+    .where(and(eq(territories.id, toTerritoryId), eq(territories.game_id, gameId)))
     .get();
 
   if (!fromTerritory || !toTerritory) throw new Error("Territory not found");
-  if (fromTerritory.owner_id !== attackerId)
-    throw new Error("You don't own the source territory");
-  if (toTerritory.owner_id === attackerId)
-    throw new Error("You can't attack yourself");
+  if (fromTerritory.owner_id !== attackerId) throw new Error("You don't own the source territory");
+  if (!toTerritory.owner_id) throw new Error("Cannot attack unowned territory");
+  if (toTerritory.owner_id === attackerId) throw new Error("You can't attack yourself");
 
-  // Validate units
-  const units = db
+  const units = await db
     .select()
     .from(things)
     .where(and(inArray(things.id, unitIds), eq(things.owner_id, attackerId)))
     .all();
-  if (units.length !== unitIds.length)
-    throw new Error("Invalid units selected");
+  if (units.length !== unitIds.length) throw new Error("Invalid units selected");
 
-  // Ensure units are ON the source territory
   for (const u of units) {
-    if (u.territory_id !== fromTerritoryId)
+    if (u.territory_id !== fromTerritoryId || u.location !== "BOARD") {
       throw new Error(`Unit ${u.id} is not on the source territory`);
+    }
   }
 
-  // Get Defender Units
-  const defenderUnits = db
+  const defenderUnits = await db
     .select()
     .from(things)
     .where(
-      and(eq(things.territory_id, toTerritoryId), eq(things.location, "BOARD"))
+      and(
+        eq(things.territory_id, toTerritoryId),
+        eq(things.location, "BOARD")
+      )
     )
     .all();
 
-  if (!toTerritory.owner_id) {
-    // Logic for neutral territory or unowned? Specs say "The Land Deck that has been played".
-    // Usually owned once placed. If unowned (e.g. initial exploration?), we might skip combat or fight neutral monsters.
-    // For now, assume PVP.
-    throw new Error("Cannot attack unowned territory (not implemented)");
-  }
-
-  // 2. Initialize Combat State
+  const fortValue = calculateFortDefense(toTerritory);
   const combatState: CombatState = {
     attackerId,
     defenderId: toTerritory.owner_id,
     territoryId: toTerritoryId,
     attackerUnitIds: unitIds,
     defenderUnitIds: defenderUnits.map((u) => u.id),
-    currentRound: 1,
     stage: "INITIATIVE",
-    logs: [`${attackerId} attacked ${toTerritoryId}!`],
+    logs: [`${attackerId} attacked ${toTerritoryId}.`],
+    fortRemaining: fortValue,
   };
 
-  db.update(games)
+  await db
+    .update(games)
     .set({ combat_state: JSON.stringify(combatState) })
     .where(eq(games.id, gameId))
     .run();
@@ -102,187 +88,330 @@ export function declareAttack(
   return combatState;
 }
 
-export function resolveCombatStep(gameId: string) {
-  const game = getGame(gameId);
+export async function resolveCombatStep(gameId: string) {
+  const game = await getGame(gameId);
   if (!game || !game.combat_state) throw new Error("No active combat");
 
-  let state: CombatState = JSON.parse(game.combat_state as string);
-
-  // Simple State Machine for Combat Steps
+  const state: CombatState = JSON.parse(game.combat_state as string);
   if (state.stage === "INITIATIVE") {
-    const attRoll = rollD6();
-    const defRoll = rollD6();
-    state.logs.push(
-      `Initiative: Attacker rolled ${attRoll}, Defender rolled ${defRoll}`
-    );
+    const attackerCount = state.attackerUnitIds.length;
+    const defenderCount = state.defenderUnitIds.length;
+    const attackerBonus = attackerCount < defenderCount ? 1 : 0;
+    const defenderBonus = defenderCount < attackerCount ? 1 : 0;
 
-    // Tie goes to defender usually, or re-roll. Let's say Defender wins ties.
-    state.initiativeWinner = attRoll > defRoll ? "ATTACKER" : "DEFENDER";
+    let attackerRoll = rollD6() + attackerBonus;
+    let defenderRoll = rollD6() + defenderBonus;
+    while (attackerRoll === defenderRoll) {
+      attackerRoll = rollD6() + attackerBonus;
+      defenderRoll = rollD6() + defenderBonus;
+    }
+    state.initiativeWinner = attackerRoll > defenderRoll ? "ATTACKER" : "DEFENDER";
     state.stage = "RANGED";
-    state.logs.push(`Phase: RANGED`);
+    state.logs.push(
+      `Initiative: Attacker ${attackerRoll}, Defender ${defenderRoll}. Winner: ${state.initiativeWinner}.`
+    );
   } else if (state.stage === "RANGED") {
-    // Resolve Ranged Fire (Simultaneous or Initiative based? Specs: "Attacker Ranged -> Defender assigns hits...")
-    // Wait, specs say: "Attacker Ranged fire -> Defender assigns hits -> Defender Ranged fire -> Attacker assigns hits."
-    // This implies multiple interactions within RANGED.
+    const rangedResult = await resolveStage(state, "RANGED");
+    state.logs.push(...rangedResult.logs);
+    state.fortRemaining = rangedResult.fortRemaining;
+    state.attackerUnitIds = rangedResult.attackerUnitIds;
+    state.defenderUnitIds = rangedResult.defenderUnitIds;
 
-    // For MVP, let's just do a bulk roll for both sides and sum hits.
-    const attHits = rollAttacks(state.attackerUnitIds, "RANGED");
-    const defHits = rollAttacks(state.defenderUnitIds, "RANGED");
-
-    state.logs.push(
-      `Ranged Round: Attacker hits ${attHits}, Defender hits ${defHits}`
-    );
-
-    if (attHits > 0 || defHits > 0) {
-      state.pendingCasualties = {
-        playerId: state.defenderId, // Simplifying: Just one side resolves first? No, we need a queue.
-        // Complex casualty resolution is hard to do fully auto if users need to select.
-        // We'll set a generic "pending" state.
-        count: attHits,
-        source: "RANGED",
-      };
-      // NOTE: This logic is incomplete. We need to handle BOTH sides taking casualties.
-      // For MVP, we apply damage automatically to random units or ask user.
-      // Let's implement AUTO-CASUALTY for now to get the loop working.
-
-      applyAutoCasualties(state, state.defenderId, attHits);
-      applyAutoCasualties(state, state.attackerId, defHits);
+    if (isBattleOver(state)) {
+      return await finishCombat(gameId, state);
     }
-
     state.stage = "MELEE";
-    state.logs.push(`Phase: MELEE`);
   } else if (state.stage === "MELEE") {
-    const attHits = rollAttacks(state.attackerUnitIds, "MELEE");
-    const defHits = rollAttacks(state.defenderUnitIds, "MELEE");
+    const meleeResult = await resolveStage(state, "MELEE");
+    state.logs.push(...meleeResult.logs);
+    state.fortRemaining = meleeResult.fortRemaining;
+    state.attackerUnitIds = meleeResult.attackerUnitIds;
+    state.defenderUnitIds = meleeResult.defenderUnitIds;
 
-    state.logs.push(
-      `Melee Round: Attacker hits ${attHits}, Defender hits ${defHits}`
-    );
-
-    applyAutoCasualties(state, state.defenderId, attHits);
-    applyAutoCasualties(state, state.attackerId, defHits);
-
-    // Check for end of combat
-    if (checkCombatEnd(state)) {
-      // Combat Over
-      // Handle victory/defeat
-      endCombat(gameId, state);
-      return { ...state, finished: true };
-    } else {
-      state.currentRound++;
-      state.stage = "RANGED"; // Loop back? Or stay in Melee? Usually Melee continues until done.
-      // Specs don't specify multiple rounds details, but typically Board Games cycle.
-      // Let's cycle back to Ranged (some games allow ranged every round) or just Melee.
-      // Let's cycle to Ranged for full cycle.
-    }
+    return await finishCombat(gameId, state);
   }
 
-  // Save State
-  db.update(games)
+  await db
+    .update(games)
     .set({ combat_state: JSON.stringify(state) })
     .where(eq(games.id, gameId))
     .run();
-
   return state;
+}
+
+async function resolveStage(state: CombatState, stage: "RANGED" | "MELEE") {
+  const logs: string[] = [];
+  const attackerUnits = await loadUnits(state.attackerUnitIds);
+  const defenderUnits = await loadUnits(state.defenderUnitIds);
+  const territory = await db
+    .select()
+    .from(territories)
+    .where(eq(territories.id, state.territoryId))
+    .get();
+
+  if (!territory) {
+    throw new Error("Territory not found");
+  }
+
+  const attackerHits = rollAttacks(
+    attackerUnits,
+    territory.terrain_type,
+    stage,
+    true
+  );
+  const defenderUnitHits = rollAttacks(
+    defenderUnits,
+    territory.terrain_type,
+    stage,
+    false
+  );
+  const fortHits = rollFortDice(state.fortRemaining);
+  const defenderHits = defenderUnitHits + fortHits;
+
+  logs.push(
+    `${stage} combat: attacker hits ${attackerHits}, defender hits ${defenderHits} (forts ${fortHits}).`
+  );
+
+  const defenderResult = await applyHitsToDefender(
+    defenderUnits,
+    attackerHits,
+    state.fortRemaining
+  );
+  const attackerResult = await applyHitsToAttacker(attackerUnits, defenderHits);
+
+  logs.push(...defenderResult.logs, ...attackerResult.logs);
+
+  return {
+    logs,
+    fortRemaining: defenderResult.fortRemaining,
+    attackerUnitIds: attackerResult.remainingIds,
+    defenderUnitIds: defenderResult.remainingIds,
+  };
+}
+
+function rollAttacks(
+  units: typeof things.$inferSelect[],
+  terrainType: string | null,
+  stage: "RANGED" | "MELEE",
+  isAttacker: boolean
+) {
+  let hits = 0;
+  for (const unit of units) {
+    const template = THING_TEMPLATES[unit.template_id || ""];
+    if (!template || template.kind !== "CHARACTER") continue;
+    const isRanged = template.abilities.includes("R");
+    if (stage === "RANGED" && !isRanged) continue;
+    if (stage === "MELEE" && isRanged) continue;
+
+    let diceCount = template.combat;
+    if (template.terrain && template.terrain === terrainType) {
+      diceCount += 1;
+    }
+    if (stage === "MELEE" && isAttacker && template.abilities.includes("C")) {
+      diceCount += rollD6();
+    }
+
+    for (let i = 0; i < diceCount; i++) {
+      const roll = rollD6();
+      if (template.abilities.includes("MAGIC")) {
+        if (roll >= 5) hits++;
+      } else {
+        if (roll === 6) hits++;
+      }
+    }
+  }
+  return hits;
+}
+
+async function applyHitsToDefender(
+  defenderUnits: typeof things.$inferSelect[],
+  hits: number,
+  fortRemaining: number
+) {
+  const logs: string[] = [];
+  let remainingHits = hits;
+
+  if (fortRemaining > 0) {
+    const hitsOnFort = Math.min(remainingHits, fortRemaining);
+    remainingHits -= hitsOnFort;
+    fortRemaining -= hitsOnFort;
+    logs.push(`Fortifications absorbed ${hitsOnFort} hits.`);
+  }
+
+  const result = await applyHitsToUnits(defenderUnits, remainingHits);
+  return {
+    logs: logs.concat(result.logs),
+    remainingIds: result.remainingIds,
+    fortRemaining,
+  };
+}
+
+async function applyHitsToAttacker(
+  attackerUnits: typeof things.$inferSelect[],
+  hits: number
+) {
+  const result = await applyHitsToUnits(attackerUnits, hits);
+  return {
+    logs: result.logs,
+    remainingIds: result.remainingIds,
+  };
+}
+
+async function applyHitsToUnits(
+  units: typeof things.$inferSelect[],
+  hits: number
+) {
+  const logs: string[] = [];
+  const remaining = [...units];
+  let remainingHits = hits;
+
+  while (remainingHits > 0 && remaining.length > 0) {
+    const unit = remaining.shift();
+    if (!unit) break;
+
+    const template = THING_TEMPLATES[unit.template_id || ""];
+    const isFlying = template?.abilities.includes("FLYING");
+    const hitPoints = template?.id === "sword_master" ? 2 : 1;
+
+    if (isFlying && remainingHits === 1) {
+      const saved = rollD6() % 2 === 0;
+      if (saved) {
+        remaining.push(unit);
+        remainingHits -= 1;
+        continue;
+      }
+    }
+
+    remainingHits -= hitPoints;
+    await db
+      .update(things)
+      .set({ location: "DISCARD", territory_id: null })
+      .where(eq(things.id, unit.id))
+      .run();
+    logs.push(`Unit ${unit.id} was killed.`);
+  }
+
+  return { remainingIds: remaining.map((u) => u.id), logs };
+}
+
+function isBattleOver(state: CombatState) {
+  if (state.attackerUnitIds.length === 0) return true;
+  if (state.defenderUnitIds.length === 0 && state.fortRemaining <= 0) return true;
+  return false;
+}
+
+async function finishCombat(gameId: string, state: CombatState) {
+  const territory = await db
+    .select()
+    .from(territories)
+    .where(eq(territories.id, state.territoryId))
+    .get();
+  if (!territory) throw new Error("Territory not found");
+
+  if (state.attackerUnitIds.length > 0 && state.defenderUnitIds.length === 0 && state.fortRemaining <= 0) {
+    await db
+      .update(territories)
+      .set({ owner_id: state.attackerId })
+      .where(eq(territories.id, state.territoryId))
+      .run();
+
+    await applyCaptureSavingRolls(territory, state.attackerId);
+
+    await db
+      .update(things)
+      .set({ territory_id: state.territoryId, location: "BOARD" })
+      .where(inArray(things.id, state.attackerUnitIds))
+      .run();
+
+    state.logs.push(`Attacker ${state.attackerId} captured the territory.`);
+  } else {
+    state.logs.push("Defender held the territory.");
+  }
+
+  await db
+    .update(games)
+    .set({ combat_state: null })
+    .where(eq(games.id, gameId))
+    .run();
+
+  return { ...state, finished: true };
+}
+
+async function applyCaptureSavingRolls(
+  territory: typeof territories.$inferSelect,
+  attackerId: string
+) {
+  const hasSettlement =
+    (territory.settlement_value || 0) > 0 &&
+    !(territory.settlement_type || "").startsWith("MINE_");
+  const hasMine = (territory.settlement_type || "").startsWith("MINE_");
+  const hasFort = (territory.fortification_level || 0) > 0;
+
+  let settlementValue = territory.settlement_value || 0;
+  let settlementType = territory.settlement_type;
+  if (hasSettlement || hasMine) {
+    const saved = rollD6() % 2 === 0;
+    if (!saved) {
+      settlementType = null;
+      settlementValue = 0;
+    }
+  }
+
+  let fortLevel = territory.fortification_level || 0;
+  if (hasFort) {
+    const saved = rollD6() % 2 === 0;
+    if (!saved) {
+      fortLevel = 0;
+    }
+  }
+
+  if (fortLevel === 4) {
+    const existingGran = await db
+      .select()
+      .from(territories)
+      .where(and(eq(territories.owner_id, attackerId), eq(territories.fortification_level, 4)))
+      .all();
+    if (existingGran.length > 0) {
+      fortLevel = 3;
+    }
+  }
+
+  await db
+    .update(territories)
+    .set({
+      settlement_type: settlementType,
+      settlement_value: settlementValue,
+      fortification_level: fortLevel,
+    })
+    .where(eq(territories.id, territory.id))
+    .run();
+}
+
+function calculateFortDefense(territory: typeof territories.$inferSelect) {
+  const fort = territory.fortification_level || 0;
+  const isMine = (territory.settlement_type || "").startsWith("MINE_");
+  const settlementDefense = isMine ? 0 : territory.settlement_value || 0;
+  return fort + settlementDefense;
 }
 
 function rollD6() {
   return Math.floor(Math.random() * 6) + 1;
 }
 
-function rollAttacks(unitIds: string[], type: "RANGED" | "MELEE"): number {
-  const units = db
-    .select()
-    .from(things)
-    .where(inArray(things.id, unitIds))
-    .all();
+function rollFortDice(count: number) {
+  if (count <= 0) return 0;
   let hits = 0;
-  for (const unit of units) {
-    if (!unit.template_id) continue;
-    const template = THING_TEMPLATES[unit.template_id];
-    if (!template) continue;
-
-    // Check if unit can attack in this phase
-    const isRanged = template.abilities.includes("R");
-    if (type === "RANGED" && !isRanged) continue;
-    // Melee units attack in melee. Ranged units ALSO attack in melee? Usually yes, but at penalty?
-    // Specs: "Attacker Melee". Assume all units participate in Melee.
-
-    const roll = rollD6();
-    // Basic Hit logic: "Hits on 5 or 6" is for Magic.
-    // Standard combat: "Combat Value: Number of dice rolled".
-    // Ah, Combat Value is NOT "Hit on X", it's "Number of Dice".
-    // Wait, specs: "Combat Value: Number of dice rolled."
-    // Then what determines a hit?
-    // Usually in Tom Wham games (like Kings & Things), it's 4, 5, 6? Or highest roll?
-    // Specs don't explicitly say the "To Hit" number.
-    // Re-reading specs: "Magic: Hits on 5 or 6".
-    // This implies standard units might have different hit thresholds or standard is 5/6?
-    // Let's assume standard hit is 5 or 6 for now (common in wargames).
-
-    const diceCount = template.combat;
-    for (let i = 0; i < diceCount; i++) {
-      const r = rollD6();
-      if (r >= 5) hits++;
-    }
+  for (let i = 0; i < count; i++) {
+    if (rollD6() === 6) hits++;
   }
   return hits;
 }
 
-function applyAutoCasualties(
-  state: CombatState,
-  victimId: string,
-  count: number
-) {
-  if (count <= 0) return;
-  const unitIds =
-    victimId === state.attackerId
-      ? state.attackerUnitIds
-      : state.defenderUnitIds;
-
-  // Simple logic: remove first N units
-  // In real game, user selects.
-  const deadUnits = unitIds.splice(0, count); // Removes from the array in state
-
-  // Update DB to mark as eliminated (DISCARD)
-  if (deadUnits.length > 0) {
-    db.update(things)
-      .set({ location: "DISCARD", territory_id: null })
-      .where(inArray(things.id, deadUnits))
-      .run();
-
-    state.logs.push(`${victimId} lost ${deadUnits.length} units.`);
-  }
-}
-
-function checkCombatEnd(state: CombatState): boolean {
-  if (state.attackerUnitIds.length === 0) return true; // Attacker wiped out
-  if (state.defenderUnitIds.length === 0) return true; // Defender wiped out
-  return false;
-}
-
-function endCombat(gameId: string, state: CombatState) {
-  // If defender wiped out, attacker takes territory
-  if (state.defenderUnitIds.length === 0) {
-    db.update(territories)
-      .set({ owner_id: state.attackerId })
-      .where(eq(territories.id, state.territoryId))
-      .run();
-
-    // Move attacker units into territory
-    db.update(things)
-      .set({ territory_id: state.territoryId, location: "BOARD" })
-      .where(inArray(things.id, state.attackerUnitIds))
-      .run();
-
-    state.logs.push(`Attacker ${state.attackerId} conquered the territory!`);
-  } else {
-    state.logs.push(`Defender held the territory.`);
-  }
-
-  // Clear combat state
-  db.update(games)
-    .set({ combat_state: null }) // Or keep last logs?
-    .where(eq(games.id, gameId))
-    .run();
+async function loadUnits(ids: string[]) {
+  if (ids.length === 0) return [];
+  return await db
+    .select()
+    .from(things)
+    .where(inArray(things.id, ids))
+    .all();
 }

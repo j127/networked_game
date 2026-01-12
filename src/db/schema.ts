@@ -5,8 +5,12 @@ export const games = sqliteTable("games", {
   id: text("id").primaryKey(),
   status: text("status").default("LOBBY"), // LOBBY, ACTIVE, FINISHED
   turn_player_index: integer("turn_player_index").default(0),
+  turn_number: integer("turn_number").default(1),
   current_phase: text("current_phase").default("SETUP"), // INCOME, EVENTS, ACQUIRE, COMBAT, END
   combat_state: text("combat_state"), // JSON blob
+  land_draw_state: text("land_draw_state"), // JSON blob for land draw instructions
+  turn_free_draw_used: integer("turn_free_draw_used").default(0),
+  turn_purchase_used: integer("turn_purchase_used").default(0),
   created_at: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -26,8 +30,13 @@ export const territories = sqliteTable("territories", {
   owner_id: text("owner_id").references(() => players.id),
   location: text("location").default("DECK"), // DECK, BOARD, DISCARD
   terrain_type: text("terrain_type"),
+  instruction_type: text("instruction_type"), // FOR_SALE, PUBLIC_AUCTION, FIGHT
+  instruction_value: integer("instruction_value"),
   fortification_level: integer("fortification_level").default(0),
   settlement_type: text("settlement_type"),
+  settlement_value: integer("settlement_value").default(0),
+  last_fort_build_turn: integer("last_fort_build_turn").default(0),
+  last_settlement_build_turn: integer("last_settlement_build_turn").default(0),
 });
 
 export const things = sqliteTable("things", {

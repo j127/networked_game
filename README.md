@@ -10,7 +10,7 @@ bun run frontend
 
 Please see the [specs](./specs/) directory for the technical specifications.
 
-## Project Status Report (2026-01-11)
+## Project Status Report (2026-01-12)
 
 ### Features Implemented
 
@@ -33,17 +33,22 @@ Please see the [specs](./specs/) directory for the technical specifications.
 
 **Game Mechanics**
 
-- **Game Loop:** Phase transitions (Setup -> Income -> Acquire -> Combat -> Resolution) are functional.
-- **Economy:** Gold tracking and Income phase logic.
-- **Land Acquisition:** "Draw Land" action (Cost 5g) draws a random territory from the deck and assigns it to the player.
-- **Unit Acquisition:** "Draw Unit" action (Cost 5g) draws a random unit from the deck to the player's Hand.
-- **Unit Deployment:** "Deploy Unit" action moves a unit from the Hand to a specific Territory owned by the player.
+- **Game Loop:** Phase transitions (Setup -> Income -> Events -> Acquire -> War) are functional.
+- **Economy:** Gold + Prestige calculation matches the PDF (land + forts + settlements + mines + gold/10 + specials).
+- **Land Acquisition:** Land Deck draw now honors instruction tiles (For Sale / Public Auction / Fight).
+- **Tile Acquisition:** Purchase 1–4 tiles for 2/5/10/20 gold plus a free draw per turn.
+- **Combat:** Ranged then melee with hit rules (6 to hit, magic 5/6, charge bonus, terrain bonus).
+- **Seeding:** Playing Deck, Land Deck (with instructions), and Special Characters seeded from the PDF list.
 
 ### Known Issues
 
 - **Cyclic References:** The database query for `getPlayersInGame` initially caused cyclic reference errors (Unit -> Owner -> Unit) when serializing to JSON for WebSocket broadcasts. This has been addressed with a manual data mapping fix in `src/db/queries.ts`, but needs robust testing.
 - **Server Stability:** The development server (`bun run dev`) has shown instability (exit code 130) during rapid restart cycles or high-frequency requests in testing.
 - **Frontend Connectivity:** Verification tests encountered `ERR_CONNECTION_REFUSED` on port 5173 during automated runs, suggesting the frontend dev server might not be starting reliably in the test environment.
+- **Land Instruction "Fight":** The Fight instruction is not implemented yet.
+- **Combat Loss Selection:** Casualty selection is still automatic instead of player-chosen.
+- **Magic Items & Special Abilities:** Magic item effects and special-character abilities (Thief/Assassin, etc.) are not wired into gameplay.
+- **Turn Structure:** The PDF requires all players to act each phase; current flow still advances per active player.
 
 ---
 
@@ -51,20 +56,21 @@ Please see the [specs](./specs/) directory for the technical specifications.
 
 ### 1. Stabilization & Verification (Immediate Priority)
 
-- [ ] **Verify Unit Placement Loop:** Manually confirm that "Draw Unit" and "Deploy Unit" work end-to-end without server crashes.
+- [ ] **Verify Unit Placement Loop:** Manually confirm purchase/free draw and deploy work end-to-end without server crashes.
 - [ ] **Fix Cyclic Data Issues:** Ensure the sanitized `getPlayersInGame` query is fully robust and covers all needed nested data (Traits, Abilities) without causing cycles.
-- [ ] **Integration Tests:** Create a stable script (e.g., `scripts/test_game_flow.ts`) that simulates a full turn (Join -> Draw Land -> Draw Unit -> Deploy) to catch regressions.
+- [x] **Unit Tests:** Added vitest coverage for income and tile purchase basics.
+- [ ] **Integration Tests:** Create a stable script (e.g., `scripts/test_game_flow.ts`) that simulates a full turn (Join -> Draw Land -> Purchase -> Deploy) to catch regressions.
 
 ### 2. Combat Engine (Core Feature)
 
-- [ ] **Battle State Machine:** Implement the `COMBAT` phase logic.
-- [ ] **Combat Stats:** Ensure Units and things have `combat` values correctly defined in data.
-- [ ] **Resolution Logic:** Implement dice rolling (or deterministic combat math) and hit assignment.
-- [ ] **Casualty Processing:** Handle unit destruction and removal from the database/board.
+- [x] **Battle State Machine:** Implemented ranged + melee stages with hits and fort absorption.
+- [x] **Combat Stats:** Deck data now matches the PDF list.
+- [x] **Resolution Logic:** Dice rolling honors magic and charge rules.
+- [ ] **Casualty Processing:** Allow defender/attacker to choose losses per hit.
 
 ### 3. Prestige & Victory Conditions
 
-- [ ] **Prestige Calculation:** Implement logic to calculate Prestige points based on Territories owned, Units deployed, and specific "Thing" bonuses.
+- [x] **Prestige Calculation:** Implemented per PDF (holdings + gold/10 + specials).
 - [ ] **End Game Trigger:** Check for win conditions (e.g., Target Prestige reached, or last player standing) at the end of the Resolution phase.
 - [ ] **Victory Screen:** Add a UI state to announce the winner.
 

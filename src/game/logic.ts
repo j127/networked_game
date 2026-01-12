@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 export const PHASES = ["INCOME", "EVENTS", "ACQUIRE", "WAR"] as const;
 
 export async function advancePhase(gameId: string) {
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) throw new Error("Game not found");
 
   const currentPhaseIndex = PHASES.indexOf(game.current_phase as any);
@@ -33,7 +33,7 @@ export async function advancePhase(gameId: string) {
       if (nextPhase === "INCOME") {
         await performIncomePhase(gameId);
       } else if (nextPhase === "EVENTS") {
-        performEventsPhase(gameId);
+        await performEventsPhase(gameId);
       }
 
       return nextPhase;
@@ -43,7 +43,7 @@ export async function advancePhase(gameId: string) {
 }
 
 export async function endTurn(gameId: string) {
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) throw new Error("Game not found");
 
   const players = await getPlayersInGame(gameId);
@@ -55,6 +55,10 @@ export async function endTurn(gameId: string) {
     .set({
       turn_player_index: nextPlayerIndex,
       current_phase: "INCOME",
+      turn_number: (game.turn_number || 1) + 1,
+      turn_free_draw_used: 0,
+      turn_purchase_used: 0,
+      land_draw_state: null,
     })
     .where(eq(games.id, gameId))
     .run();

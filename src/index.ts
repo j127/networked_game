@@ -5,25 +5,24 @@ import type { ServerWebSocket } from "bun";
 import { createGame, getGame, addPlayer, getPlayersInGame } from "./db/queries";
 import { initializeGameInternal } from "./game/setup";
 import { advancePhase } from "./game/logic";
-import { drawLand } from "./game/game_actions";
-import { drawThing, deployThing } from "./game/unit_actions";
+import { drawLand, resolveLandInstruction } from "./game/game_actions";
+import { purchaseTiles, freeDrawTile, deployThing } from "./game/unit_actions";
 import { declareAttack, resolveCombatStep } from "./game/combat";
-import { buildStructure } from "./game/build";
+import { buildStructure, buildSettlement } from "./game/build";
 
 // ... (existing routes)
 
 const app = new Hono();
 
 // Initialize Database
-initDB();
+void initDB();
 
 import { serveStatic } from "hono/bun";
 
 app.use("/*", serveStatic({ root: "./public" }));
 
 app.post("/api/games", (c) => {
-  const gameId = createGame();
-  return c.json({ gameId });
+  return createGame().then((gameId) => c.json({ gameId }));
 });
 
 app.post("/api/games/:gameId/join", async (c) => {
@@ -31,23 +30,36 @@ app.post("/api/games/:gameId/join", async (c) => {
   const body = await c.req.json();
   const { playerId, name, color } = body;
 
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) return c.json({ error: "Game not found" }, 404);
   if (game.status !== "LOBBY")
     return c.json({ error: "Game already started" }, 400);
 
-  addPlayer(gameId, playerId, name, color);
+  await addPlayer(gameId, playerId, name, color);
   return c.json({ success: true });
 });
 
-app.post("/api/games/:gameId/draw-thing", async (c) => {
+app.post("/api/games/:gameId/purchase-tiles", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, count } = body;
+  try {
+    const tiles = await purchaseTiles(gameId, playerId, count);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, tiles });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/free-draw", async (c) => {
   const gameId = c.req.param("gameId");
   const body = await c.req.json();
   const { playerId } = body;
   try {
-    const thing = drawThing(gameId, playerId);
+    const tile = await freeDrawTile(gameId, playerId);
     await broadcastGameState(gameId);
-    return c.json({ success: true, thing });
+    return c.json({ success: true, tile });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
   }
@@ -58,7 +70,7 @@ app.post("/api/games/:gameId/deploy-thing", async (c) => {
   const body = await c.req.json();
   const { playerId, thingId, territoryId } = body;
   try {
-    deployThing(gameId, playerId, thingId, territoryId);
+    await deployThing(gameId, playerId, thingId, territoryId);
     await broadcastGameState(gameId);
     return c.json({ success: true });
   } catch (e: any) {
@@ -71,7 +83,7 @@ app.post("/api/games/:gameId/attack", async (c) => {
   const body = await c.req.json();
   const { playerId, fromTerritoryId, toTerritoryId, unitIds } = body;
   try {
-    const combatState = declareAttack(
+    const combatState = await declareAttack(
       gameId,
       playerId,
       fromTerritoryId,
@@ -88,7 +100,7 @@ app.post("/api/games/:gameId/attack", async (c) => {
 app.post("/api/games/:gameId/combat-step", async (c) => {
   const gameId = c.req.param("gameId");
   try {
-    const state = resolveCombatStep(gameId);
+    const state = await resolveCombatStep(gameId);
     await broadcastGameState(gameId);
     return c.json({ success: true, state });
   } catch (e: any) {
@@ -101,7 +113,20 @@ app.post("/api/games/:gameId/build", async (c) => {
   const body = await c.req.json();
   const { playerId, territoryId } = body;
   try {
-    const result = buildStructure(gameId, playerId, territoryId);
+    const result = await buildStructure(gameId, playerId, territoryId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/build-settlement", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, territoryId, thingId } = body;
+  try {
+    const result = await buildSettlement(gameId, playerId, territoryId, thingId);
     await broadcastGameState(gameId);
     return c.json({ success: true, ...result });
   } catch (e: any) {
@@ -115,7 +140,7 @@ const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
 const connections = new Map<string, Set<any>>();
 
 async function broadcastGameState(gameId: string) {
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   const players = await getPlayersInGame(gameId);
   if (!game) return;
 
@@ -130,7 +155,7 @@ async function broadcastGameState(gameId: string) {
 
 app.post("/api/games/:gameId/start", async (c) => {
   const gameId = c.req.param("gameId");
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) return c.json({ error: "Game not found" }, 404);
   if (game.status !== "LOBBY")
     return c.json({ error: "Game already started" }, 400);
@@ -161,9 +186,26 @@ app.post("/api/games/:gameId/draw-land", async (c) => {
   const body = await c.req.json();
   const { playerId } = body;
   try {
-    const land = drawLand(gameId, playerId);
+    const result = await drawLand(gameId, playerId);
     await broadcastGameState(gameId);
-    return c.json({ success: true, land });
+    return c.json({ success: true, ...result });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/resolve-land", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, accept, bidAmount, winnerId } = body;
+  try {
+    const result = await resolveLandInstruction(gameId, playerId, {
+      accept,
+      bidAmount,
+      winnerId,
+    });
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
   }
@@ -191,7 +233,7 @@ app.get(
           connections.get(gameId)?.add(ws);
 
           // Send initial state
-          const game = getGame(gameId);
+          const game = await getGame(gameId);
           const players = await getPlayersInGame(gameId);
           ws.send(JSON.stringify({ type: "GAME_STATE", game, players }));
         } catch (e) {
