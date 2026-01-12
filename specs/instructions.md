@@ -28,6 +28,9 @@ CREATE TABLE games (
     land_draw_state TEXT, -- JSON blob storing pending land instruction
     turn_free_draw_used INTEGER DEFAULT 0,
     turn_purchase_used INTEGER DEFAULT 0,
+    magic_dispell_player_id TEXT,
+    magic_dispell_phase TEXT,
+    war_disabled INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -54,6 +57,7 @@ CREATE TABLE territories (
     fortification_level INTEGER DEFAULT 0, -- 0=None, 1=Tower, 2=Keep, 3=Castle, 4=Citadel
     settlement_type TEXT, -- NULL, 'VILLAGE', 'CITY', 'MINE_GOLD', 'MINE_SILVER', 'MINE_COPPER'
     settlement_value INTEGER DEFAULT 0, -- gold/prestige value for settlement
+    magic_fort_value INTEGER DEFAULT 0,
     last_fort_build_turn INTEGER DEFAULT 0,
     last_settlement_build_turn INTEGER DEFAULT 0,
     FOREIGN KEY(game_id) REFERENCES games(id),
@@ -69,6 +73,7 @@ CREATE TABLE things (
     location TEXT, -- 'DECK', 'HAND', 'BOARD', 'DISCARD', 'BANK' (for special chars)
     territory_id TEXT, -- NULL if in Hand/Deck. Points to territory if on board.
     template_id TEXT, -- e.g., 'elf_lord', 'giant_snake'
+    attached_to_thing_id TEXT,
     is_face_up BOOLEAN DEFAULT 0,
     FOREIGN KEY(game_id) REFERENCES games(id),
     FOREIGN KEY(owner_id) REFERENCES players(id),

@@ -97,6 +97,7 @@ export async function getPlayersInGame(gameId: string): Promise<PlayerType[]> {
         fortification_level: t.fortification_level,
         settlement_type: t.settlement_type,
         settlement_value: t.settlement_value,
+        magic_fort_value: t.magic_fort_value,
         instruction_type: t.instruction_type,
         instruction_value: t.instruction_value,
         units: t.units?.map((u: any) => ({
@@ -112,6 +113,7 @@ export async function getPlayersInGame(gameId: string): Promise<PlayerType[]> {
         owner_id: t.owner_id,
         location: t.location,
         template_id: t.template_id,
+        attached_to_thing_id: t.attached_to_thing_id,
         is_face_up: t.is_face_up,
       })),
     })) as PlayerType[];

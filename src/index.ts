@@ -7,8 +7,9 @@ import { initializeGameInternal } from "./game/setup";
 import { advancePhase } from "./game/logic";
 import { drawLand, resolveLandInstruction } from "./game/game_actions";
 import { purchaseTiles, freeDrawTile, deployThing } from "./game/unit_actions";
-import { declareAttack, resolveCombatStep } from "./game/combat";
+import { declareAttack, resolveCombatStep, assignCasualties } from "./game/combat";
 import { buildStructure, buildSettlement } from "./game/build";
+import { useMagicItem, useMasterThief, useAssassin } from "./game/magic";
 
 // ... (existing routes)
 
@@ -32,8 +33,8 @@ app.post("/api/games/:gameId/join", async (c) => {
 
   const game = await getGame(gameId);
   if (!game) return c.json({ error: "Game not found" }, 404);
-  if (game.status !== "LOBBY")
-    return c.json({ error: "Game already started" }, 400);
+  if (game.status === "FINISHED")
+    return c.json({ error: "Game already finished" }, 400);
 
   await addPlayer(gameId, playerId, name, color);
   return c.json({ success: true });
@@ -108,6 +109,19 @@ app.post("/api/games/:gameId/combat-step", async (c) => {
   }
 });
 
+app.post("/api/games/:gameId/assign-casualties", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, unitIds } = body;
+  try {
+    const state = await assignCasualties(gameId, playerId, unitIds || []);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, state });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
 app.post("/api/games/:gameId/build", async (c) => {
   const gameId = c.req.param("gameId");
   const body = await c.req.json();
@@ -127,6 +141,45 @@ app.post("/api/games/:gameId/build-settlement", async (c) => {
   const { playerId, territoryId, thingId } = body;
   try {
     const result = await buildSettlement(gameId, playerId, territoryId, thingId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/use-magic", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, thingId, options } = body;
+  try {
+    const result = await useMagicItem(gameId, playerId, thingId, options);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/use-thief", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, targetPlayerId } = body;
+  try {
+    const result = await useMasterThief(gameId, playerId, targetPlayerId);
+    await broadcastGameState(gameId);
+    return c.json({ success: true, ...result });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.post("/api/games/:gameId/use-assassin", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json();
+  const { playerId, targetPlayerId } = body;
+  try {
+    const result = await useAssassin(gameId, playerId, targetPlayerId);
     await broadcastGameState(gameId);
     return c.json({ success: true, ...result });
   } catch (e: any) {

@@ -70,7 +70,7 @@ const baseTemplates: ThingTemplate[] = [
   { id: "lucky_charm", name: "Lucky Charm", combat: 0, abilities: [], kind: "MAGIC" },
   { id: "dust_of_defense", name: "Dust of Defense", combat: 0, abilities: [], kind: "MAGIC" },
   { id: "talisman", name: "Talisman", combat: 0, abilities: [], kind: "MAGIC" },
-  { id: "golem", name: "Golem", combat: 0, abilities: [], kind: "MAGIC" },
+  { id: "golem", name: "Golem", combat: 9, abilities: ["IMMUNE_RANGED"], kind: "MAGIC" },
   { id: "scroll_mist", name: "Scroll - Mist", combat: 0, abilities: [], kind: "MAGIC" },
   { id: "scroll_dispell", name: "Scroll - Dispell", combat: 0, abilities: [], kind: "MAGIC" },
   { id: "scroll_fire_wall", name: "Scroll - Fire Wall", combat: 0, abilities: [], kind: "MAGIC" },

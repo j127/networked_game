@@ -1,7 +1,9 @@
 import { db } from "../db";
-import { territories, players, games } from "../db/schema";
+import { territories, players, games, things } from "../db/schema";
 import { getGame } from "../db/queries";
 import { eq, and, sql, inArray } from "drizzle-orm";
+import { THING_TEMPLATES } from "./data";
+import { startFightCombat } from "./combat";
 
 export async function drawLand(gameId: string, playerId: string) {
   // 1. Check phase
@@ -33,13 +35,13 @@ export async function drawLand(gameId: string, playerId: string) {
       throw new Error("No land cards left in deck");
     }
 
-      if (tile.instruction_type) {
-        instructionIds.push(tile.id);
-        lastInstruction = {
-          type: tile.instruction_type,
-          value: tile.instruction_value ?? undefined,
-          tileId: tile.id,
-        };
+    if (tile.instruction_type) {
+      instructionIds.push(tile.id);
+      lastInstruction = {
+        type: tile.instruction_type,
+        value: tile.instruction_value ?? undefined,
+        tileId: tile.id,
+      };
       await db
         .update(territories)
         .set({ location: "DISCARD" })
@@ -163,7 +165,83 @@ export async function resolveLandInstruction(
         .run();
     });
   } else if (state.instructionType === "FIGHT") {
-    throw new Error("FIGHT land instruction not implemented yet");
+    if (!options.accept) {
+      await db
+        .update(territories)
+        .set({ location: "DECK", owner_id: null })
+        .where(eq(territories.id, land.id))
+        .run();
+    } else {
+      const defenderIds: string[] = [];
+      const nonCharacterIds: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const tile = await db
+          .select()
+          .from(things)
+          .where(and(eq(things.game_id, gameId), eq(things.location, "DECK")))
+          .orderBy(sql`RANDOM()`)
+          .limit(1)
+          .get();
+        if (!tile) break;
+
+        await db
+          .update(things)
+          .set({ location: "DISCARD" })
+          .where(eq(things.id, tile.id))
+          .run();
+
+        const template = THING_TEMPLATES[tile.template_id || ""];
+        const isCharacter = template?.kind === "CHARACTER";
+        if (!isCharacter) {
+          nonCharacterIds.push(tile.id);
+          continue;
+        }
+
+        await db
+          .update(things)
+          .set({ location: "FIGHT", territory_id: land.id, owner_id: null })
+          .where(eq(things.id, tile.id))
+          .run();
+        defenderIds.push(tile.id);
+      }
+
+      if (nonCharacterIds.length > 0) {
+        await db
+          .update(things)
+          .set({ location: "DECK", owner_id: null, territory_id: null })
+          .where(inArray(things.id, nonCharacterIds))
+          .run();
+      }
+
+      if (defenderIds.length === 0) {
+        await db
+          .update(territories)
+          .set({ location: "BOARD", owner_id: playerId })
+          .where(eq(territories.id, land.id))
+          .run();
+      } else {
+        const attackers = await db
+          .select()
+          .from(things)
+          .where(and(eq(things.owner_id, playerId), eq(things.location, "BOARD")))
+          .all();
+        const attackerIds = attackers.map((unit) => unit.id);
+        if (attackerIds.length === 0) {
+          await db
+            .update(territories)
+            .set({ owner_id: null, location: "DECK" })
+            .where(eq(territories.id, land.id))
+            .run();
+          await db
+            .update(things)
+            .set({ location: "DECK", owner_id: null, territory_id: null })
+            .where(inArray(things.id, defenderIds))
+            .run();
+        } else {
+          await startFightCombat(gameId, playerId, land.id, defenderIds, attackerIds);
+        }
+      }
+    }
   } else {
     throw new Error("Unknown land instruction");
   }

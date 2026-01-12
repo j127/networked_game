@@ -37,17 +37,18 @@ Please see the [specs](./specs/) directory for the technical specifications.
 - **Economy:** Gold + Prestige calculation matches the PDF (land + forts + settlements + mines + gold/10 + specials).
 - **Land Acquisition:** Land Deck draw now honors instruction tiles (For Sale / Public Auction / Fight).
 - **Tile Acquisition:** Purchase 1–4 tiles for 2/5/10/20 gold plus a free draw per turn.
-- **Combat:** Ranged then melee with hit rules (6 to hit, magic 5/6, charge bonus, terrain bonus).
+- **Combat:** Ranged then melee with hit rules (6 to hit, magic 5/6, charge bonus, terrain bonus) plus player-chosen casualties.
 - **Seeding:** Playing Deck, Land Deck (with instructions), and Special Characters seeded from the PDF list.
+- **Magic Items & Specials:** Magic sword/bow attachments, golem deployment, dispell, fire wall, talisman revival pool, and Thief/Assassin actions are wired into gameplay.
 
 ### Known Issues
 
 - **Cyclic References:** The database query for `getPlayersInGame` initially caused cyclic reference errors (Unit -> Owner -> Unit) when serializing to JSON for WebSocket broadcasts. This has been addressed with a manual data mapping fix in `src/db/queries.ts`, but needs robust testing.
 - **Server Stability:** The development server (`bun run dev`) has shown instability (exit code 130) during rapid restart cycles or high-frequency requests in testing.
 - **Frontend Connectivity:** Verification tests encountered `ERR_CONNECTION_REFUSED` on port 5173 during automated runs, suggesting the frontend dev server might not be starting reliably in the test environment.
-- **Land Instruction "Fight":** The Fight instruction is not implemented yet.
-- **Combat Loss Selection:** Casualty selection is still automatic instead of player-chosen.
-- **Magic Items & Special Abilities:** Magic item effects and special-character abilities (Thief/Assassin, etc.) are not wired into gameplay.
+- **Magic Items:** Lucky Charm currently exposes a low-level roll index selection UI; we still need a player-friendly prompt that shows the rolled dice.
+- **Scroll Mist / War Pay:** War stopping is implemented by skipping the WAR phase, but there is no gold payment system to reclaim.
+- **Talisman Placement:** Talisman returns revived units to hand instead of placing them directly in a territory.
 - **Turn Structure:** The PDF requires all players to act each phase; current flow still advances per active player.
 
 ---
@@ -66,7 +67,8 @@ Please see the [specs](./specs/) directory for the technical specifications.
 - [x] **Battle State Machine:** Implemented ranged + melee stages with hits and fort absorption.
 - [x] **Combat Stats:** Deck data now matches the PDF list.
 - [x] **Resolution Logic:** Dice rolling honors magic and charge rules.
-- [ ] **Casualty Processing:** Allow defender/attacker to choose losses per hit.
+- [x] **Casualty Processing:** Allow defender/attacker to choose losses per hit.
+- [ ] **Magic Polish:** Improve Lucky Charm UX and reconcile war-pay rules for Scroll Mist.
 
 ### 3. Prestige & Victory Conditions
 

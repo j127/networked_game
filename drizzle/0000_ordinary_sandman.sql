@@ -8,6 +8,9 @@ CREATE TABLE `games` (
 	`land_draw_state` text,
 	`turn_free_draw_used` integer DEFAULT 0,
 	`turn_purchase_used` integer DEFAULT 0,
+	`magic_dispell_player_id` text,
+	`magic_dispell_phase` text,
+	`war_disabled` integer DEFAULT 0,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP
 );
 --> statement-breakpoint
@@ -40,6 +43,7 @@ CREATE TABLE `territories` (
 	`fortification_level` integer DEFAULT 0,
 	`settlement_type` text,
 	`settlement_value` integer DEFAULT 0,
+	`magic_fort_value` integer DEFAULT 0,
 	`last_fort_build_turn` integer DEFAULT 0,
 	`last_settlement_build_turn` integer DEFAULT 0,
 	FOREIGN KEY (`game_id`) REFERENCES `games`(`id`) ON UPDATE no action ON DELETE no action,
@@ -53,6 +57,7 @@ CREATE TABLE `things` (
 	`location` text,
 	`territory_id` text,
 	`template_id` text,
+	`attached_to_thing_id` text,
 	`is_face_up` integer DEFAULT 0,
 	FOREIGN KEY (`game_id`) REFERENCES `games`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`owner_id`) REFERENCES `players`(`id`) ON UPDATE no action ON DELETE no action,
