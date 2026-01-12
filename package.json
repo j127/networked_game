@@ -8,7 +8,8 @@
     "frontend": "vite --open",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "prettier --write '**/*.{md,mdx,ts,js,mjs,cjs,jsx,tsx,yaml,yml,json,html,css,scss,vue,astro}'"
   },
   "dependencies": {
